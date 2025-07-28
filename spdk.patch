@@ -1,0 +1,35 @@
+diff --git a/include/spdk/bit_pool.h b/include/spdk/bit_pool.h
+index 1a038a5..369b907 100644
+--- a/include/spdk/bit_pool.h
++++ b/include/spdk/bit_pool.h
+@@ -16,8 +16,12 @@
+ extern "C" {
+ #endif
+ 
+-struct spdk_bit_pool;
+ struct spdk_bit_array;
++struct spdk_bit_pool {
++	struct spdk_bit_array	*array;
++	uint32_t		lowest_free_bit;
++	uint32_t		free_count;
++};
+ 
+ /**
+  * Return the number of bits that a bit pool is currently sized to hold.
+diff --git a/lib/util/bit_array.c b/lib/util/bit_array.c
+index ec18249..21029fc 100644
+--- a/lib/util/bit_array.c
++++ b/lib/util/bit_array.c
+@@ -335,12 +335,6 @@
+ 	}
+ }
+ 
+-struct spdk_bit_pool {
+-	struct spdk_bit_array	*array;
+-	uint32_t		lowest_free_bit;
+-	uint32_t		free_count;
+-};
+-
+ struct spdk_bit_pool *
+ spdk_bit_pool_create(uint32_t num_bits)
+ {

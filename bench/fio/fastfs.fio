@@ -1,0 +1,16 @@
+[global]
+ioengine=external:/chenxu14/workspace/FastFS/bench/fio/fastfs_fio.so
+spdk_conf=/chenxu14/workspace/FastFS/bench/bdev.json
+spdk_bdev=Malloc0
+test_file=/test.txt
+do_format=true
+size=40M
+fallocate=none
+iodepth=1
+verify=md5
+verify_fatal=1
+direct=1
+
+[seqwrite]
+rw=write
+bs=512K

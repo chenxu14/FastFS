@@ -1,0 +1,17 @@
+{
+  "subsystems": [
+    {
+      "subsystem": "bdev",
+      "config": [
+        {
+          "method": "bdev_aio_create",
+          "params": {
+            "name": "aio0",
+            "filename": "/dev/ram0",
+            "block_size": 512
+          }
+        }
+      ]
+    }
+  ]
+}
