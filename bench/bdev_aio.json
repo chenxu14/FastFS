@@ -7,8 +7,8 @@
           "method": "bdev_aio_create",
           "params": {
             "name": "aio0",
-            "filename": "/dev/ram0",
-            "block_size": 512
+            "filename": "/chenxu14/workspace/image.raw",
+            "block_size": 4096
           }
         }
       ]

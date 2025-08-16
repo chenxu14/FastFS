@@ -82,9 +82,10 @@ struct fastfs_fio_thread {
   struct thread_data* td;
   struct spdk_thread* thread;
   struct io_u** iocq;
-  int iodepth;
-  int count;
-  struct io_u* current = nullptr;
+  ByteBuffer** buffers;
+  int reqs = 0;
+  int count = 0;
+  bool writing = false;
 };
 
 static void bdev_fini_done(void *cb_arg) {
@@ -97,7 +98,7 @@ static void write_file_complete(void* cb_args, int code) {
   fs_op_context* opCtx = reinterpret_cast<fs_op_context*>(cb_args);
   WriteContext* writeCtx = reinterpret_cast<WriteContext*>(opCtx->private_data);
   if (code != 0) {
-    SPDK_ERRLOG("write file failed: %d\n", code);
+    SPDK_ERRLOG("write failed: %d\n", code);
     exit(code);
   }
   FastFS* fastfs = opCtx->fastfs;
@@ -266,10 +267,11 @@ static int start_reactor(thread_data* td) {
       reinterpret_cast<struct fastfs_fio_thread*>(spdk_thread_get_ctx(thread));
   fio_thread->td = td;
   fio_thread->thread = thread;
-  fio_thread->iodepth = td->o.iodepth;
   g_test_file_size = td->o.size;
   fio_thread->iocq =
-      (struct io_u**) calloc(fio_thread->iodepth, sizeof(struct io_u *));
+      (struct io_u**) calloc(td->o.iodepth, sizeof(struct io_u*));
+  fio_thread->buffers =
+      (struct ByteBuffer**) calloc(td->o.iodepth, sizeof(struct ByteBuffer*));
   fio_thread->count = 0;
   td->io_ops_data = fio_thread;
   spdk_set_thread(thread);
@@ -321,6 +323,10 @@ static void fastfs_cleanup(struct thread_data *td) {
   spdk_env_fini();
 }
 
+static int fastfs_invalidate(struct thread_data*, struct fio_file*) {
+  return 0; // nothing to do
+}
+
 static int fastfs_open(struct thread_data *td, struct fio_file *f) {
   struct fastfs_fio_thread* fio_thread =
       reinterpret_cast<struct fastfs_fio_thread*>(td->io_ops_data);
@@ -333,32 +339,51 @@ static int fastfs_open(struct thread_data *td, struct fio_file *f) {
   return 0;
 }
 
+static void fsync_complete(void* cb_args, int) {
+  int* rc = reinterpret_cast<int*>(cb_args);
+  *rc = 1;
+}
+
 static int fastfs_close(struct thread_data *td, struct fio_file *f) {
   struct fastfs_fio_thread* fio_thread =
       reinterpret_cast<struct fastfs_fio_thread*>(td->io_ops_data);
-  int rc = fio_thread->fastfs->close(f->fd);
+  int rc = 0;
+  // do fsync first
+  fs_op_context* opCtx = fio_thread->fastfs->allocFsOp();
+  FSyncContext* fsyncCtx = new (opCtx->private_data) FSyncContext();
+  fsyncCtx->fd = f->fd;
+  opCtx->callback = fsync_complete;
+  opCtx->cb_args = &rc;
+  fio_thread->fastfs->fsync(*opCtx);
+  while (!rc) {
+    spdk_thread_poll(fio_thread->thread, 0, 0);
+  }
+  opCtx->fastfs->freeFsOp(opCtx);
+
+  rc = fio_thread->fastfs->close(f->fd);
   f->fd = -1;
   return rc;
 }
 
 static void read_write_complete(void* arg, int code) {
+  struct io_u* io_u = reinterpret_cast<struct io_u*>(arg);
   struct fastfs_fio_thread* fio_thread =
-      reinterpret_cast<struct fastfs_fio_thread*>(arg);
+      reinterpret_cast<struct fastfs_fio_thread*>(
+          spdk_thread_get_ctx(spdk_get_thread()));
   if (code != 0) {
-    if (fio_thread->current->ddir == DDIR_WRITE) {
+    if (io_u->ddir == DDIR_WRITE) {
       printf("write file failed : %d\n", code);
     } else {
       printf("read file failed : %d\n", code);
     }
     exit(code);
   }
-  fio_thread->iocq[fio_thread->count++] = fio_thread->current;
+  fio_thread->iocq[fio_thread->count++] = io_u;
 }
 
 static void write_file(struct thread_data *td, struct io_u *io_u) {
   struct fastfs_fio_thread* fio_thread =
       reinterpret_cast<struct fastfs_fio_thread*>(td->io_ops_data);
-  fio_thread->current = io_u;
   FastFS* fastfs = fio_thread->fastfs;
   fs_op_context* opCtx = reinterpret_cast<fs_op_context*>(io_u->engine_data);
   WriteContext* writeCtx = new (opCtx->private_data) WriteContext();
@@ -367,23 +392,18 @@ static void write_file(struct thread_data *td, struct io_u *io_u) {
   writeCtx->pwrite = true;
   writeCtx->offset = io_u->offset;
   writeCtx->count = io_u->xfer_buflen;
-  if (fio_thread->td->o.odirect) {
-    writeCtx->direct = true;
-    writeCtx->direct_buff = fio_thread->buff;
-    writeCtx->write_buff = writeCtx->direct_buff->p_buffer_;
-  } else {
-    writeCtx->write_buff = (char*) io_u->xfer_buf;
-  }
+  writeCtx->direct = true;
+  writeCtx->direct_buff = fio_thread->buffers[io_u->index];
+  writeCtx->write_buff = writeCtx->direct_buff->p_buffer_;
 
   opCtx->callback = read_write_complete;
-  opCtx->cb_args = fio_thread;
+  opCtx->cb_args = io_u;
   fastfs->write(*opCtx);
 }
 
 static void read_file(struct thread_data *td, struct io_u *io_u) {
   struct fastfs_fio_thread* fio_thread =
       reinterpret_cast<struct fastfs_fio_thread*>(td->io_ops_data);
-  fio_thread->current = io_u;
   FastFS* fastfs = fio_thread->fastfs;
   fs_op_context* opCtx = reinterpret_cast<fs_op_context*>(io_u->engine_data);
   ReadContext* readCtx = new (opCtx->private_data) ReadContext();
@@ -392,23 +412,27 @@ static void read_file(struct thread_data *td, struct io_u *io_u) {
   readCtx->pread = true;
   readCtx->offset = io_u->offset;
   readCtx->count = io_u->xfer_buflen;
-  if (fio_thread->td->o.odirect) {
-    readCtx->direct = true;
-    readCtx->direct_buff = &fio_thread->buff->clear();
-  } else {
-    readCtx->read_buff = (char*) io_u->xfer_buf;
-  }
+  readCtx->direct = true;
+  readCtx->direct_buff = &(fio_thread->buffers[io_u->index]->clear());
 
   opCtx->callback = read_write_complete;
-  opCtx->cb_args = fio_thread;
+  opCtx->cb_args = io_u;
   fastfs->read(*opCtx);
 }
 
 static enum fio_q_status fastfs_queue(struct thread_data *td, struct io_u *io_u) {
+  struct fastfs_fio_thread* fio_thread =
+      reinterpret_cast<struct fastfs_fio_thread*>(td->io_ops_data);
+  if (fio_thread->writing) {
+    return FIO_Q_BUSY;
+  }
   if (io_u->ddir == DDIR_WRITE) {
+    fio_thread->writing = true;
+    fio_thread->reqs++;
     write_file(td, io_u);
     return FIO_Q_QUEUED;
   } else if (io_u->ddir == DDIR_READ) {
+    fio_thread->reqs++;
     read_file(td, io_u);
     return FIO_Q_QUEUED;
   } else {
@@ -421,14 +445,14 @@ static int fastfs_getevents(struct thread_data *td, unsigned int min,
     unsigned int max, const struct timespec *t) {
   struct fastfs_fio_thread* fio_thread =
       reinterpret_cast<struct fastfs_fio_thread*>(td->io_ops_data);
-  int events = 0;
-  while (events < fio_thread->iodepth) {
-    if (spdk_thread_poll(fio_thread->thread, 0, 0)) {
-      events = fio_thread->count;
-    }
+  while (fio_thread->count < fio_thread->reqs) {
+    spdk_thread_poll(fio_thread->thread, 0, 0);
   }
+  int res = fio_thread->count;
   fio_thread->count = 0;
-  return events;
+  fio_thread->reqs = 0;
+  fio_thread->writing = false;
+  return res;
 }
 
 static struct io_u* fastfs_event(struct thread_data *td, int event) {
@@ -457,18 +481,18 @@ static void fastfs_io_u_free(struct thread_data *td, struct io_u *io_u) {
 static int fastfs_iomem_alloc(struct thread_data *td, size_t total_mem) {
   struct fastfs_fio_thread* fio_thread =
       reinterpret_cast<struct fastfs_fio_thread*>(td->io_ops_data);
-  uint32_t extentSize = FastFS::fs_context.extentSize;
-  if (total_mem < extentSize) {
-    total_mem = extentSize;
-  }
-  fio_thread->buff = new ByteBuffer(total_mem, true,
-      FastFS::fs_context.localNuma, FastFS::fs_context.bufAlign);
+  fio_thread->buff = new ByteBuffer(
+      total_mem, true, FastFS::fs_context.localNuma, 4096/*page_size*/);
   if (!fio_thread->buff) {
     printf("failed to allocate ByteBuffer\n");
     exit(-1);
   }
   td->orig_buffer = fio_thread->buff->getBuffer();
-  td->orig_buffer_size = total_mem;
+  uint32_t max_bs = td_max_bs(td);
+  for (uint32_t i = 0; i < td->o.iodepth; i++) {
+    fio_thread->buffers[i] = new ByteBuffer(
+        fio_thread->buff->p_buffer_ + max_bs * i, max_bs);
+  }
   return 0;
 }
 
@@ -482,7 +506,7 @@ static void fastfs_iomem_free(struct thread_data *td) {
 }
 
 static int fastfs_setup(struct thread_data *td) {
-  // tell FIO this is no need to generate test file
+  // tell FIO there is no need to generate test file
   td->o.create_on_open = 1;
   return 0;
 }
@@ -496,6 +520,7 @@ void get_ioengine(struct ioengine_ops **ioengine_ptr) {
     ioengine.flags = FIO_NODISKUTIL;
     ioengine.setup = fastfs_setup;
     ioengine.init = fastfs_init;
+    ioengine.invalidate = fastfs_invalidate;
     ioengine.open_file = fastfs_open;
     ioengine.queue = fastfs_queue;
     ioengine.getevents = fastfs_getevents;

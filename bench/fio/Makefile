@@ -13,7 +13,7 @@ SYS_LIBS += -L$(FASTFS_ROOT_DIR)/core -lfastfs
 LDFLAGS += -Wl,-rpath=$(FASTFS_ROOT_DIR)/core
 CXXFLAGS += -I$(FASTFS_ROOT_DIR)
 
-FIO_SRC_DIR := /chenxu14/workspace/fio
+FIO_SRC_DIR := /chenxu14/workspace/fio-3.39
 PLUGIN_NAME = fastfs_fio
 SO_NAME = ${PLUGIN_NAME}.so
 CXXFLAGS += -I${FIO_SRC_DIR} -include config-host.h
