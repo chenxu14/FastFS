@@ -29,3 +29,7 @@ Dump metadata
 Checkpoint operation
 
     ./tools/fastfs_tools -c /chenxu14/workspace/FastFS/bench/bdev_aio.json -b aio0 -C
+
+Mount FUSE
+
+    ./fuse/fastfs_fuse -c /chenxu14/workspace/FastFS/bench/bdev_aio.json -b aio0 -m /mnt/fastfs
