@@ -183,7 +183,7 @@ static void parseJournal(
   if (flag == 1 && nextExtentId > 0) {
     buffer->clear();
     SPDK_NOTICELOG("JOURNAL %d [", nextExtentId);
-    uint64_t nextOffset = (nextExtentId << ctx.extentBits);
+    uint64_t nextOffset = static_cast<uint64_t>(nextExtentId) << ctx.extentBits;
     spdk_bdev_read(ctx.bdev_desc, ctx.bdev_io_channel, buffer->p_buffer_,
         nextOffset, ctx.extentSize, parseJournal, buffer);
     return;
@@ -235,8 +235,9 @@ static void parseDentry(
   if (nextExtent > 0) {
     SPDK_NOTICELOG("DENTRY %d [", nextExtent);
     extentBuf->clear();
+    uint64_t offset = static_cast<uint64_t>(nextExtent) << ctx.extentBits;
     spdk_bdev_read(ctx.bdev_desc, ctx.bdev_io_channel, extentBuf->p_buffer_,
-        nextExtent << ctx.extentBits, ctx.extentSize, parseDentry, extentBuf);
+        offset, ctx.extentSize, parseDentry, extentBuf);
     return;
   }
 
@@ -260,8 +261,9 @@ static void parseInodes(
   if (nextExtent > 0) {
     SPDK_NOTICELOG("INODES %d [", nextExtent);
     extentBuf->clear();
+    uint64_t offset = static_cast<uint64_t>(nextExtent) << ctx.extentBits;
     spdk_bdev_read(ctx.bdev_desc, ctx.bdev_io_channel, extentBuf->p_buffer_,
-        nextExtent << ctx.extentBits, ctx.extentSize, parseInodes, extentBuf);
+        offset, ctx.extentSize, parseInodes, extentBuf);
     return;
   }
 

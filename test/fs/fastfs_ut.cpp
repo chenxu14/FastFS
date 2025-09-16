@@ -88,6 +88,19 @@ int spdk_bdev_read(
     spdk_bdev_io_completion_cb cb, void *cb_arg) {
   if (FILE_READ) {
     ByteBuffer* buffer = reinterpret_cast<ByteBuffer*>(cb_arg);
+    fs_op_context* ctx = reinterpret_cast<fs_op_context*>(buffer->private_data);
+    ReadContext* readCtx = reinterpret_cast<ReadContext*>(ctx->private_data);
+    FastInode* inode = readCtx->file->inode_;
+    // check if extentId exists
+    uint32_t targetId = offset >> FastFS::fs_context.extentBits;
+    bool exist = false;
+    for (auto& extentId : *inode->extents_) {
+      if (extentId == targetId) {
+        exist = true;
+      }
+    }
+    CU_ASSERT(exist);
+
     for (uint32_t i = 0; i < buffer->remaining(); i++) {
       uint32_t index = buffer->position() + i;
       char val = buffer->mark_ + i;
@@ -154,6 +167,10 @@ int spdk_bdev_writev(
   CU_ASSERT((offset & (BLOCK_SIZE - 1)) == 0);
   CU_ASSERT((len & (BLOCK_SIZE - 1)) == 0);
   CU_ASSERT((iov[0].iov_len & (BLOCK_SIZE - 1)) == 0);
+  for (WriteExtent& extent : writeCtx->writeExtents) {
+    uint32_t targetId = extent.offset >> FastFS::fs_context.extentBits;
+    CU_ASSERT(targetId == extent.extentId);
+  }
 
   if (WRITE_ERROR) {
     WRITE_ERROR = false;
@@ -612,6 +629,29 @@ static void readDirect(FastFS& fs, int fd, read_write_task& t) {
   FILE_READ = false;
 }
 
+static void test_large_offset(void) {
+  FastFS fs("Malloc0");
+  do_mount(fs, BLOCK_SIZE * 8);
+
+  // mock file
+  std::string name = "file";
+  mockCreate(fs, name);
+  FastInode* inode = fs.lookup(0, name);
+  CU_ASSERT_FATAL(inode != nullptr);
+  inode->size_ = task.offset;
+  uint32_t extentId = UINT32_MAX >> FastFS::fs_context.extentBits;
+  // disk offset large than UINT32_MAX
+  inode->extents_->emplace_back(extentId + 10);
+  inode->extents_->emplace_back(extentId + 11);
+
+  std::string path = "/" + name;
+  int fd = fs.open(path, F_MULTI_WRITE);
+  CU_ASSERT(fd > 0);
+  writeFile(fs, fd, task);
+  readFile(fs, fd, task);
+  fs.close(fd);
+}
+
 static void test_read_write(void) {
   FastFS fs("Malloc0");
   do_mount(fs, BLOCK_SIZE * 8);
@@ -873,6 +913,7 @@ int main() {
       CU_add_test(suite, "objs poll", test_fs_op_pool) == NULL ||
       CU_add_test(suite, "open close", test_open_close) == NULL ||
       CU_add_test(suite, "alloc buffer", test_alloc_buffer) == NULL ||
+      CU_add_test(suite, "large offset", test_large_offset) == NULL ||
       CU_add_test(suite, "fd overflow", test_fd_overflow) == NULL ||
       CU_add_test(suite, "inode overflow", test_inode_overflow) == NULL ||
       CU_add_test(suite, "file read write", test_read_write) == NULL ||

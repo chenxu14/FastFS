@@ -9,9 +9,6 @@
 #include <sys/ioctl.h>
 
 #define FASTFS_IOCTYPE_ID 'f'
-
-enum {
-  FASTFS_IOCTL_GET_FD = _IOR(FASTFS_IOCTYPE_ID, 1, int32_t)
-};
+#define FASTFS_IOCTL_GET_FD _IOR(FASTFS_IOCTYPE_ID, 1, int32_t)
 
 #endif /* FASTFS_FUSE_H_ */

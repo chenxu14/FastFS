@@ -114,7 +114,8 @@ void FastFS::read(fs_op_context& ctx) {
       readExtentComplete(nullptr, true, extentBuf);
     } else {
       // read extent data
-      bdevOffset = (extentId << fs_context.extentBits) + extentOffset;
+      bdevOffset = (static_cast<uint64_t>(extentId) << fs_context.extentBits)
+          + extentOffset;
       spdk_bdev_read(fs_context.bdev_desc, fs_context.bdev_io_channel,
           extentBuf->p_buffer_, bdevOffset, nbytes, readExtentComplete, extentBuf);
     }
@@ -156,7 +157,7 @@ void FastFS::read(fs_op_context& ctx) {
       memset(extentBuf->getBuffer(), 0, extentBuf->remaining());
       readExtentComplete(nullptr, true, extentBuf);
     } else {
-      bdevOffset = (extentId << fs_context.extentBits);
+      bdevOffset = (static_cast<uint64_t>(extentId) << fs_context.extentBits);
       spdk_bdev_read(fs_context.bdev_desc, fs_context.bdev_io_channel,
           extentBuf->getBuffer(), bdevOffset, nbytes, readExtentComplete, extentBuf);
     }

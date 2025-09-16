@@ -188,7 +188,8 @@ static void copyOnWrite(struct spdk_bdev_io* bdev_io, bool success, void* cb_arg
     ctx->fastfs->freeBuffer(extentBuf);
     return writeExtentComplete(nullptr, false, ctx);
   }
-  uint64_t bdevOff = (extent->newId << FastFS::fs_context.extentBits);
+  uint64_t bdevOff =
+      static_cast<uint64_t>(extent->newId) << FastFS::fs_context.extentBits;
   spdk_bdev_write(FastFS::fs_context.bdev_desc, FastFS::fs_context.bdev_io_channel,
       extentBuf->p_buffer_, bdevOff, FastFS::fs_context.extentSize,
       writeExtentComplete, extentBuf);
@@ -269,7 +270,8 @@ static void writeExtent(struct spdk_bdev_io* bdev_io, bool success, void* cb_arg
         SPDK_WARNLOG("no free extents.\n");
         return writeExtentComplete(nullptr, false, ctx);
       }
-      uint64_t bdevOff = (extent->newId << fs_context.extentBits);
+      uint64_t bdevOff =
+          static_cast<uint64_t>(extent->newId) << fs_context.extentBits;
       spdk_bdev_write(fs_context.bdev_desc, fs_context.bdev_io_channel,
           addr, bdevOff, fs_context.extentSize, writeExtentComplete, buffer);
     } else {
@@ -321,7 +323,9 @@ static void writeRange(struct spdk_bdev_io* bdev_io, bool success, void* cb_arg)
     if (writeCtx->append) {
       // align extentOffset with blockSize
       extentOffset -= blockOffset;
-      extent.offset = (extent.extentId << fs_context.extentBits) + extentOffset;
+      extent.offset =
+          (static_cast<uint64_t>(extent.extentId) << fs_context.extentBits)
+          + extentOffset;
       // most cases, one extent is enough
       if (writeCtx->writingSize >= writeCtx->count) {
         writeCtx->writingSize = writeCtx->count;
@@ -346,7 +350,8 @@ static void writeRange(struct spdk_bdev_io* bdev_io, bool success, void* cb_arg)
         writeExtent(nullptr, true, target);
       }
     } else { // random write
-      extent.offset = (extent.extentId << fs_context.extentBits);
+      extent.offset =
+          static_cast<uint64_t>(extent.extentId) << fs_context.extentBits;
       extent.len = fs_context.extentSize;
       if (writeCtx->writingSize >= writeCtx->count) {
         writeCtx->writingSize = writeCtx->count;
@@ -378,7 +383,8 @@ static void writeRange(struct spdk_bdev_io* bdev_io, bool success, void* cb_arg)
       }
       extent.newId = extent.extentId;
     }
-    extent.offset = (extent.extentId << fs_context.extentBits);
+    extent.offset =
+        static_cast<uint64_t>(extent.extentId) << fs_context.extentBits;
     extent.bufOff = writeCtx->writingSize;
     uint32_t remaining = writeCtx->remainingSize();
     if (remaining < fs_context.extentSize) { // the last extent
@@ -440,7 +446,8 @@ void FastFS::write(fs_op_context& ctx) {
       // padding zero with last extent
       uint32_t extentId = extents[extents.size() - 1];
       if (extentId != UINT32_MAX) { // truncate case
-        uint64_t offset = (extentId << fs_context.extentBits);
+        uint64_t offset =
+            static_cast<uint64_t>(extentId) << fs_context.extentBits;
         ByteBuffer* buffer = allocBuffer();
         buffer->private_data = &ctx;
         buffer->mark_ = offset;

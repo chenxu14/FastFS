@@ -171,7 +171,8 @@ static void parseExtent(ByteBuffer* buffer, uint32_t startOff, uint32_t skipOps)
   // read next extent
   if (flag == 1 && journal->nextExtentId > 0) {
     buffer->clear();
-    journal->offset = (journal->nextExtentId << fs_context.extentBits);
+    journal->offset =
+        static_cast<uint64_t>(journal->nextExtentId) << fs_context.extentBits;
     journal->curBlock = 0;
     spdk_bdev_read(fs_context.bdev_desc, fs_context.bdev_io_channel,
         buffer->p_buffer_, journal->offset, fs_context.extentSize,
@@ -269,7 +270,7 @@ void FastJournal::writeComplete(int code) {
     tail_block_full = false;
     curBlock++;
     if (curBlock == extentBlocks) {
-      offset = nextExtentId << fs_context.extentBits;
+      offset = static_cast<uint64_t>(nextExtentId) << fs_context.extentBits;
       curBlock = 0;
     } else {
       offset += fs_context.blockSize;

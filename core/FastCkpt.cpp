@@ -95,7 +95,7 @@ static void loadDentryAndExtents(
   if (nextExtent > 0) {
     ctx.allocator->reserve(nextExtent);
     fastfs->checkpoint->extents_.push_front(nextExtent);
-    uint64_t bdevOffset = nextExtent << ctx.extentBits;
+    uint64_t bdevOffset = static_cast<uint64_t>(nextExtent) << ctx.extentBits;
     extentBuf->clear();
     spdk_bdev_read(ctx.bdev_desc, ctx.bdev_io_channel,
         extentBuf->p_buffer_, bdevOffset, ctx.extentSize,
@@ -165,7 +165,7 @@ static void loadInodes(
   if (nextExtent > 0) {
     ctx.allocator->reserve(nextExtent);
     fastfs->checkpoint->extents_.push_front(nextExtent);
-    uint64_t bdevOffset = nextExtent << ctx.extentBits;
+    uint64_t bdevOffset = static_cast<uint64_t>(nextExtent) << ctx.extentBits;
     extentBuf->clear();
     spdk_bdev_read(ctx.bdev_desc, ctx.bdev_io_channel,
         extentBuf->p_buffer_, bdevOffset, ctx.extentSize,
@@ -178,7 +178,8 @@ static void loadInodes(
     ctx.allocator->reserve(dentryLocation);
     fastfs->checkpoint->dentryLocation = dentryLocation;
     fastfs->checkpoint->extents_.push_front(dentryLocation);
-    uint64_t bdevOffset = dentryLocation << ctx.extentBits;
+    uint64_t bdevOffset =
+        static_cast<uint64_t>(dentryLocation) << ctx.extentBits;
     extentBuf->clear();
     spdk_bdev_read(ctx.bdev_desc, ctx.bdev_io_channel,
         extentBuf->p_buffer_, bdevOffset, ctx.extentSize,
@@ -195,7 +196,8 @@ void FastCkpt::loadImage() {
   if (inodesLocation > 0) {
     fs_context.allocator->reserve(inodesLocation);
     extents_.push_front(inodesLocation);
-    uint64_t bdevOffset = inodesLocation << fs_context.extentBits;
+    uint64_t bdevOffset =
+        static_cast<uint64_t>(inodesLocation) << fs_context.extentBits;
     spdk_bdev_read(fs_context.bdev_desc, fs_context.bdev_io_channel,
         extentBuf->p_buffer_, bdevOffset, fs_context.extentSize,
         loadInodes, extentBuf);
@@ -368,9 +370,9 @@ endLoop:
   fs_context_t& ctx = FastFS::fs_context;
   if (count > 0) {
     extentBuf->pwrite<uint32_t>(4, count); // update count
+    uint64_t offset = static_cast<uint64_t>(ckpt.curExtent) << ctx.extentBits;
     spdk_bdev_write(ctx.bdev_desc, ctx.bdev_io_channel, extentBuf->p_buffer_,
-        ckpt.curExtent << ctx.extentBits, ctx.extentSize,
-        ckptDentryComplete, extentBuf);
+        offset, ctx.extentSize, ckptDentryComplete, extentBuf);
   } else {
     writeSuperBlock(extentBuf);
   }
@@ -442,9 +444,9 @@ static void ckptINode(ByteBuffer* extentBuf) {
     extentBuf->pwrite<uint32_t>(4, count); // update count
     // write extent
     fs_context_t& ctx = FastFS::fs_context;
+    uint64_t offset = static_cast<uint64_t>(ckpt.curExtent) << ctx.extentBits;
     spdk_bdev_write(ctx.bdev_desc, ctx.bdev_io_channel, extentBuf->p_buffer_,
-        ckpt.curExtent << ctx.extentBits, ctx.extentSize,
-        ckptINodeComplete, extentBuf);
+        offset, ctx.extentSize, ckptINodeComplete, extentBuf);
   } else {
     ckpt.cusor = fastfs->inodes->begin();
     ckpt.dentryLocation = FastFS::fs_context.allocator->allocate();
