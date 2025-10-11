@@ -6,12 +6,12 @@
 #include "FastFS.h"
 
 static constexpr int32_t kMinExtentSize = 21;
-static void ckptINode(ByteBuffer* extentBuf);
-static void ckptDentryAndExtents(ByteBuffer* extentBuf);
+static void ckptINode(ByteBuffer *extentBuf);
+static void ckptDentryAndExtents(ByteBuffer *extentBuf);
 
-static void loadSuccess(ByteBuffer* extentBuf) {
-  FastFS* fastfs = reinterpret_cast<FastFS*>(extentBuf->private_data);
-  fs_context_t& ctx = FastFS::fs_context;
+static void loadSuccess(ByteBuffer *extentBuf) {
+  FastFS *fastfs = reinterpret_cast<FastFS *>(extentBuf->private_data);
+  fs_context_t &ctx = FastFS::fs_context;
   fastfs->freeBuffer(extentBuf);
   SPDK_NOTICELOG("load checkpoint success, do replay journal now.\n");
   // replay journal
@@ -19,8 +19,7 @@ static void loadSuccess(ByteBuffer* extentBuf) {
   fastfs->journal->logReplay();
 }
 
-bool FastCkpt::parseExtent(
-    ByteBuffer* extentBuf, uint32_t& nextExtent, INodeCache& inodes) {
+bool FastCkpt::parseExtent(ByteBuffer *extentBuf, uint32_t &nextExtent, INodeCache &inodes) {
   uint32_t numOps = 0;
   extentBuf->read<uint32_t>(nextExtent);
   extentBuf->read<uint32_t>(numOps);
@@ -49,8 +48,7 @@ bool FastCkpt::parseExtent(
       if (extentBuf->read<uint32_t>(ino) && ino < fs_context.maxInodes) {
         extentBuf->read<uint32_t>(childCount);
         for (uint32_t j = 0; j < childCount; j++) {
-          if (extentBuf->read<uint32_t>(childIno) &&
-              childIno < fs_context.maxInodes) {
+          if (extentBuf->read<uint32_t>(childIno) && childIno < fs_context.maxInodes) {
             inodes[ino].children_->insert(childIno);
           } else {
             SPDK_WARNLOG("child's inodeId overflow\n");
@@ -69,24 +67,22 @@ bool FastCkpt::parseExtent(
   return true;
 }
 
-static void loadDentryAndExtents(
-    struct spdk_bdev_io* bdev_io, bool success, void *cb_arg) {
+static void loadDentryAndExtents(struct spdk_bdev_io *bdev_io, bool success, void *cb_arg) {
   if (bdev_io) {
     spdk_bdev_free_io(bdev_io);
   }
-  ByteBuffer* extentBuf = reinterpret_cast<ByteBuffer*>(cb_arg);
-  FastFS* fastfs = reinterpret_cast<FastFS*>(extentBuf->private_data);
-  fs_context_t& ctx = FastFS::fs_context;
+  ByteBuffer *extentBuf = reinterpret_cast<ByteBuffer *>(cb_arg);
+  FastFS *fastfs = reinterpret_cast<FastFS *>(extentBuf->private_data);
+  fs_context_t &ctx = FastFS::fs_context;
   if (!success) {
     fastfs->freeBuffer(extentBuf);
-    ctx.callback(fastfs, -7/*load dentry failed*/);
+    ctx.callback(fastfs, -7 /*load dentry failed*/);
     return;
   }
 
   uint32_t nextExtent = 0;
   if (!fastfs->checkpoint->parseExtent(extentBuf, nextExtent, *fastfs->inodes)) {
-    SPDK_WARNLOG("extent %d's OP record can't parse successfully!\n",
-        fastfs->checkpoint->curExtent);
+    SPDK_WARNLOG("extent %d's OP record can't parse successfully!\n", fastfs->checkpoint->curExtent);
     fastfs->freeBuffer(extentBuf);
     FastFS::fs_context.callback(fastfs, -8);
     return;
@@ -97,26 +93,29 @@ static void loadDentryAndExtents(
     fastfs->checkpoint->extents_.push_front(nextExtent);
     uint64_t bdevOffset = static_cast<uint64_t>(nextExtent) << ctx.extentBits;
     extentBuf->clear();
-    spdk_bdev_read(ctx.bdev_desc, ctx.bdev_io_channel,
-        extentBuf->p_buffer_, bdevOffset, ctx.extentSize,
-        loadDentryAndExtents, extentBuf);
+    spdk_bdev_read(ctx.bdev_desc,
+                   ctx.bdev_io_channel,
+                   extentBuf->p_buffer_,
+                   bdevOffset,
+                   ctx.extentSize,
+                   loadDentryAndExtents,
+                   extentBuf);
     return;
   }
 
   loadSuccess(extentBuf);
 }
 
-static void loadInodes(
-    struct spdk_bdev_io* bdev_io, bool success, void *cb_arg) {
+static void loadInodes(struct spdk_bdev_io *bdev_io, bool success, void *cb_arg) {
   if (bdev_io) {
     spdk_bdev_free_io(bdev_io);
   }
-  ByteBuffer* extentBuf = reinterpret_cast<ByteBuffer*>(cb_arg);
-  FastFS* fastfs = reinterpret_cast<FastFS*>(extentBuf->private_data);
-  fs_context_t& ctx = FastFS::fs_context;
+  ByteBuffer *extentBuf = reinterpret_cast<ByteBuffer *>(cb_arg);
+  FastFS *fastfs = reinterpret_cast<FastFS *>(extentBuf->private_data);
+  fs_context_t &ctx = FastFS::fs_context;
   if (!success) {
     fastfs->freeBuffer(extentBuf);
-    ctx.callback(fastfs, -3/*read extent failed*/);
+    ctx.callback(fastfs, -3 /*read extent failed*/);
     return;
   }
 
@@ -130,7 +129,7 @@ static void loadInodes(
   bool head = false;
   for (uint32_t i = 0; i < numOps; i++) {
     extentBuf->read<int32_t>(opSize);
-    auto& inodeProto = fastfs->checkpoint->inodeProto;
+    auto &inodeProto = fastfs->checkpoint->inodeProto;
     if (inodeProto.deserialize(extentBuf)) {
       if (inodeProto.ino >= FastFS::fs_context.maxInodes) {
         SPDK_WARNLOG("No available inodes");
@@ -148,14 +147,12 @@ static void loadInodes(
       }
 
       FastFS::fs_context.inodeAllocator->reserve(inodeProto.ino);
-      FastInode& inode = (*fastfs->inodes)[inodeProto.ino];
-      inode.create(inodeProto.ino, inodeProto.parent_id,
-          inodeProto.name, inodeProto.type);
+      FastInode &inode = (*fastfs->inodes)[inodeProto.ino];
+      inode.create(inodeProto.ino, inodeProto.parent_id, inodeProto.name, inodeProto.type);
       inode.size_ = inodeProto.size;
       inode.mode_ = inodeProto.mode;
     } else {
-      SPDK_WARNLOG("extent %d's OP record can't parse successfully!\n",
-          fastfs->checkpoint->curExtent);
+      SPDK_WARNLOG("extent %d's OP record can't parse successfully!\n", fastfs->checkpoint->curExtent);
       fastfs->freeBuffer(extentBuf);
       ctx.callback(fastfs, -6);
       return;
@@ -167,9 +164,8 @@ static void loadInodes(
     fastfs->checkpoint->extents_.push_front(nextExtent);
     uint64_t bdevOffset = static_cast<uint64_t>(nextExtent) << ctx.extentBits;
     extentBuf->clear();
-    spdk_bdev_read(ctx.bdev_desc, ctx.bdev_io_channel,
-        extentBuf->p_buffer_, bdevOffset, ctx.extentSize,
-        loadInodes, extentBuf);
+    spdk_bdev_read(
+      ctx.bdev_desc, ctx.bdev_io_channel, extentBuf->p_buffer_, bdevOffset, ctx.extentSize, loadInodes, extentBuf);
     return;
   }
 
@@ -178,50 +174,57 @@ static void loadInodes(
     ctx.allocator->reserve(dentryLocation);
     fastfs->checkpoint->dentryLocation = dentryLocation;
     fastfs->checkpoint->extents_.push_front(dentryLocation);
-    uint64_t bdevOffset =
-        static_cast<uint64_t>(dentryLocation) << ctx.extentBits;
+    uint64_t bdevOffset = static_cast<uint64_t>(dentryLocation) << ctx.extentBits;
     extentBuf->clear();
-    spdk_bdev_read(ctx.bdev_desc, ctx.bdev_io_channel,
-        extentBuf->p_buffer_, bdevOffset, ctx.extentSize,
-        loadDentryAndExtents, extentBuf);
+    spdk_bdev_read(ctx.bdev_desc,
+                   ctx.bdev_io_channel,
+                   extentBuf->p_buffer_,
+                   bdevOffset,
+                   ctx.extentSize,
+                   loadDentryAndExtents,
+                   extentBuf);
   } else {
     loadSuccess(extentBuf);
   }
 }
 
 void FastCkpt::loadImage() {
-  ByteBuffer* extentBuf = fs_context.fastfs->allocBuffer();
+  ByteBuffer *extentBuf = fs_context.fastfs->allocBuffer();
   extentBuf->private_data = fs_context.fastfs;
   inodesLocation = fs_context.superBlock.ckptInodesLoc;
   if (inodesLocation > 0) {
     fs_context.allocator->reserve(inodesLocation);
     extents_.push_front(inodesLocation);
-    uint64_t bdevOffset =
-        static_cast<uint64_t>(inodesLocation) << fs_context.extentBits;
-    spdk_bdev_read(fs_context.bdev_desc, fs_context.bdev_io_channel,
-        extentBuf->p_buffer_, bdevOffset, fs_context.extentSize,
-        loadInodes, extentBuf);
+    uint64_t bdevOffset = static_cast<uint64_t>(inodesLocation) << fs_context.extentBits;
+    spdk_bdev_read(fs_context.bdev_desc,
+                   fs_context.bdev_io_channel,
+                   extentBuf->p_buffer_,
+                   bdevOffset,
+                   fs_context.extentSize,
+                   loadInodes,
+                   extentBuf);
   } else {
     loadSuccess(extentBuf);
   }
 }
 
-static void writeSuperBlockComplete(
-    struct spdk_bdev_io* bdev_io, bool success, void *cb_arg) {
+static void writeSuperBlockComplete(struct spdk_bdev_io *bdev_io, bool success, void *cb_arg) {
   if (bdev_io) {
     spdk_bdev_free_io(bdev_io);
   }
-  ByteBuffer* extentBuf = reinterpret_cast<ByteBuffer*>(cb_arg);
-  FastFS* fastfs = reinterpret_cast<FastFS*>(extentBuf->private_data);
-  FastCkpt& ckpt = *fastfs->checkpoint;
+  ByteBuffer *extentBuf = reinterpret_cast<ByteBuffer *>(cb_arg);
+  FastFS *fastfs = reinterpret_cast<FastFS *>(extentBuf->private_data);
+  FastCkpt &ckpt = *fastfs->checkpoint;
 
   if (success) {
     SPDK_NOTICELOG("checkpoint finished, inodes begin at %d, "
-        "dentry begin at %d, inodes extents %d, dentry extents %d\n",
-        ckpt.inodesLocation, ckpt.dentryLocation,
-        ckpt.inodeExtents, ckpt.dentryExtents);
+                   "dentry begin at %d, inodes extents %d, dentry extents %d\n",
+                   ckpt.inodesLocation,
+                   ckpt.dentryLocation,
+                   ckpt.inodeExtents,
+                   ckpt.dentryExtents);
     // release Journal's old extents
-    auto& journalExtents = fastfs->journal->extents_;
+    auto &journalExtents = fastfs->journal->extents_;
     int count = 0;
     for (auto it = fastfs->journal->cusor; it != journalExtents.end(); it++) {
       count++;
@@ -238,10 +241,10 @@ static void writeSuperBlockComplete(
   ckpt.ckpt_cb(fastfs, success ? 0 : -4);
 }
 
-static void writeSuperBlock(ByteBuffer* buffer) {
-  FastFS* fastfs = reinterpret_cast<FastFS*>(buffer->private_data);
-  FastCkpt& ckpt = *fastfs->checkpoint;
-  fs_context_t& ctx = FastFS::fs_context;
+static void writeSuperBlock(ByteBuffer *buffer) {
+  FastFS *fastfs = reinterpret_cast<FastFS *>(buffer->private_data);
+  FastCkpt &ckpt = *fastfs->checkpoint;
+  fs_context_t &ctx = FastFS::fs_context;
   ctx.superBlock.ckptInodesLoc = ckpt.inodesLocation;
   ctx.superBlock.ckptDentryLoc = ckpt.dentryLocation;
   ctx.superBlock.lastTxid = fastfs->journal->txid;
@@ -251,18 +254,17 @@ static void writeSuperBlock(ByteBuffer* buffer) {
   ctx.superBlock.journalSkipOps = fastfs->journal->num_ops;
   buffer->clear();
   ctx.superBlock.serialize(buffer);
-  spdk_bdev_write(ctx.bdev_desc, ctx.bdev_io_channel,
-      buffer->p_buffer_, 0, ctx.blockSize, writeSuperBlockComplete, buffer);
+  spdk_bdev_write(
+    ctx.bdev_desc, ctx.bdev_io_channel, buffer->p_buffer_, 0, ctx.blockSize, writeSuperBlockComplete, buffer);
 }
 
-static void ckptDentryComplete(
-    struct spdk_bdev_io* bdev_io, bool success, void *cb_arg) {
+static void ckptDentryComplete(struct spdk_bdev_io *bdev_io, bool success, void *cb_arg) {
   if (bdev_io) {
     spdk_bdev_free_io(bdev_io);
   }
-  ByteBuffer* extentBuf = reinterpret_cast<ByteBuffer*>(cb_arg);
-  FastFS* fastfs = reinterpret_cast<FastFS*>(extentBuf->private_data);
-  FastCkpt& ckpt = *fastfs->checkpoint;
+  ByteBuffer *extentBuf = reinterpret_cast<ByteBuffer *>(cb_arg);
+  FastFS *fastfs = reinterpret_cast<FastFS *>(extentBuf->private_data);
+  FastCkpt &ckpt = *fastfs->checkpoint;
 
   if (success) {
     ckpt.curExtent = ckpt.nextExtent;
@@ -275,9 +277,9 @@ static void ckptDentryComplete(
   }
 }
 
-static void ckptDentryAndExtents(ByteBuffer* extentBuf) {
-  FastFS* fastfs = reinterpret_cast<FastFS*>(extentBuf->private_data);
-  FastCkpt& ckpt = *fastfs->checkpoint;
+static void ckptDentryAndExtents(ByteBuffer *extentBuf) {
+  FastFS *fastfs = reinterpret_cast<FastFS *>(extentBuf->private_data);
+  FastCkpt &ckpt = *fastfs->checkpoint;
 
   // reset extent buffer
   extentBuf->clear();
@@ -286,9 +288,8 @@ static void ckptDentryAndExtents(ByteBuffer* extentBuf) {
   ckpt.nextExtent = 0;
   int count = 0;
   while (ckpt.cusor != fastfs->inodes->end()) {
-    auto& inode = *ckpt.cusor;
-    if (inode.status_ == 1 && inode.type_ == FASTFS_REGULAR_FILE &&
-        inode.extents_->size() > 0) {
+    auto &inode = *ckpt.cusor;
+    if (inode.status_ == 1 && inode.type_ == FASTFS_REGULAR_FILE && inode.extents_->size() > 0) {
       if (ckpt.extentEnd) {
         ckpt.extentCusor = inode.extents_->begin();
         ckpt.extentEnd = false;
@@ -322,8 +323,7 @@ static void ckptDentryAndExtents(ByteBuffer* extentBuf) {
       }
       extentBuf->pwrite<uint32_t>(extentBuf->mark_, childCount);
       ckpt.extentEnd = true;
-    } else if (inode.status_ == 1 && inode.type_ == FASTFS_DIR &&
-        inode.children_->size() > 0) {
+    } else if (inode.status_ == 1 && inode.type_ == FASTFS_DIR && inode.children_->size() > 0) {
       if (ckpt.dentryEnd) {
         ckpt.dentryCusor = inode.children_->begin();
         ckpt.dentryEnd = false;
@@ -367,25 +367,24 @@ static void ckptDentryAndExtents(ByteBuffer* extentBuf) {
   }
 
 endLoop:
-  fs_context_t& ctx = FastFS::fs_context;
+  fs_context_t &ctx = FastFS::fs_context;
   if (count > 0) {
     extentBuf->pwrite<uint32_t>(4, count); // update count
     uint64_t offset = static_cast<uint64_t>(ckpt.curExtent) << ctx.extentBits;
-    spdk_bdev_write(ctx.bdev_desc, ctx.bdev_io_channel, extentBuf->p_buffer_,
-        offset, ctx.extentSize, ckptDentryComplete, extentBuf);
+    spdk_bdev_write(
+      ctx.bdev_desc, ctx.bdev_io_channel, extentBuf->p_buffer_, offset, ctx.extentSize, ckptDentryComplete, extentBuf);
   } else {
     writeSuperBlock(extentBuf);
   }
 }
 
-static void ckptINodeComplete(
-    struct spdk_bdev_io* bdev_io, bool success, void *cb_arg) {
+static void ckptINodeComplete(struct spdk_bdev_io *bdev_io, bool success, void *cb_arg) {
   if (bdev_io) {
     spdk_bdev_free_io(bdev_io);
   }
-  ByteBuffer* extentBuf = reinterpret_cast<ByteBuffer*>(cb_arg);
-  FastFS* fastfs = reinterpret_cast<FastFS*>(extentBuf->private_data);
-  FastCkpt& ckpt = *fastfs->checkpoint;
+  ByteBuffer *extentBuf = reinterpret_cast<ByteBuffer *>(cb_arg);
+  FastFS *fastfs = reinterpret_cast<FastFS *>(extentBuf->private_data);
+  FastCkpt &ckpt = *fastfs->checkpoint;
   if (success) {
     ckpt.curExtent = ckpt.nextExtent;
     ckptINode(extentBuf);
@@ -397,9 +396,9 @@ static void ckptINodeComplete(
   }
 }
 
-static void ckptINode(ByteBuffer* extentBuf) {
-  FastFS* fastfs = reinterpret_cast<FastFS*>(extentBuf->private_data);
-  FastCkpt& ckpt = *fastfs->checkpoint;
+static void ckptINode(ByteBuffer *extentBuf) {
+  FastFS *fastfs = reinterpret_cast<FastFS *>(extentBuf->private_data);
+  FastCkpt &ckpt = *fastfs->checkpoint;
   // reset extent buffer
   extentBuf->clear();
   extentBuf->write<uint32_t>(0); // next extentId
@@ -409,7 +408,7 @@ static void ckptINode(ByteBuffer* extentBuf) {
   // serialize INodes
   int count = 0;
   while (ckpt.cusor != fastfs->inodes->end()) {
-    auto& inode = *ckpt.cusor;
+    auto &inode = *ckpt.cusor;
     if (inode.status_ != 1) {
       ckpt.cusor++;
       continue;
@@ -422,7 +421,7 @@ static void ckptINode(ByteBuffer* extentBuf) {
     ckpt.inodeProto.mode = inode.mode_;
 
     int size = INodeFile::kFixSize + ckpt.inodeProto.name.size();
-    if (extentBuf->writable(size + 5/*1 type and 4 size*/)) {
+    if (extentBuf->writable(size + 5 /*1 type and 4 size*/)) {
       extentBuf->write<int32_t>(size);
       ckpt.inodeProto.serialize(extentBuf);
     } else { // extents full
@@ -443,10 +442,10 @@ static void ckptINode(ByteBuffer* extentBuf) {
     }
     extentBuf->pwrite<uint32_t>(4, count); // update count
     // write extent
-    fs_context_t& ctx = FastFS::fs_context;
+    fs_context_t &ctx = FastFS::fs_context;
     uint64_t offset = static_cast<uint64_t>(ckpt.curExtent) << ctx.extentBits;
-    spdk_bdev_write(ctx.bdev_desc, ctx.bdev_io_channel, extentBuf->p_buffer_,
-        offset, ctx.extentSize, ckptINodeComplete, extentBuf);
+    spdk_bdev_write(
+      ctx.bdev_desc, ctx.bdev_io_channel, extentBuf->p_buffer_, offset, ctx.extentSize, ckptINodeComplete, extentBuf);
   } else {
     ckpt.cusor = fastfs->inodes->begin();
     ckpt.dentryLocation = FastFS::fs_context.allocator->allocate();
@@ -460,7 +459,7 @@ void FastCkpt::checkpoint(fs_cb callback) {
   uint32_t count = fs_context.inodeAllocator->getAllocated();
   SPDK_NOTICELOG("do checkpoint now, total inodes %d\n", count);
   ckpt_cb = callback;
-  ByteBuffer* extentBuf = fs_context.fastfs->allocBuffer();
+  ByteBuffer *extentBuf = fs_context.fastfs->allocBuffer();
   extentBuf->private_data = fs_context.fastfs;
   // notify FastJournal first
   fs_context.fastfs->journal->startCheckpoint();

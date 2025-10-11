@@ -5,7 +5,7 @@
 
 #include "FastFS.h"
 
-void WriteContext::reset(FastFile* f, uint64_t off) {
+void WriteContext::reset(FastFile *f, uint64_t off) {
   offset = off;
   writingSize = 0;
   writedExtents = 0;
@@ -20,8 +20,7 @@ void WriteContext::reset(FastFile* f, uint64_t off) {
   }
 }
 
-void WriteContext::dirctWrite(
-    FastFS* fs, int handle, uint64_t off, uint32_t len, const char* data) {
+void WriteContext::dirctWrite(FastFS *fs, int handle, uint64_t off, uint32_t len, const char *data) {
   fd = handle;
   pwrite = true;
   direct = true;
@@ -32,20 +31,20 @@ void WriteContext::dirctWrite(
   write_buff = direct_buff->p_buffer_;
 }
 
-ByteBuffer* FastFile::getTailBlock() {
+ByteBuffer *FastFile::getTailBlock() {
   if (!tail_block) {
-    fs_context_t& fs_context = FastFS::fs_context;
-    char* tail_block_buffer = (char*) spdk_dma_zmalloc_socket(
-        fs_context.blockSize, fs_context.bufAlign, NULL, fs_context.localNuma);
+    fs_context_t &fs_context = FastFS::fs_context;
+    char *tail_block_buffer =
+      (char *)spdk_dma_zmalloc_socket(fs_context.blockSize, fs_context.bufAlign, NULL, fs_context.localNuma);
     tail_block = new ByteBuffer(tail_block_buffer, fs_context.blockSize);
   }
   return tail_block;
 }
 
-void FastFS::writeComplete(fs_op_context* ctx) {
-  WriteContext* writeCtx = reinterpret_cast<WriteContext*>(ctx->private_data);
-  FastFile* file = writeCtx->file;
-  FastInode* inode = file->inode_;
+void FastFS::writeComplete(fs_op_context *ctx) {
+  WriteContext *writeCtx = reinterpret_cast<WriteContext *>(ctx->private_data);
+  FastFile *file = writeCtx->file;
+  FastInode *inode = file->inode_;
   // if inode has been deleted, no need to update
   if (inode->status_ == 1) {
     uint64_t size = writeCtx->offset + writeCtx->writingSize;
@@ -61,11 +60,11 @@ void FastFS::writeComplete(fs_op_context* ctx) {
       uint64_t endoff = writeCtx->offset + writeCtx->count;
       uint32_t tailSize = endoff & fs_context.blockMask;
       if (tailSize > 0) {
-        ByteBuffer* tailBlock = file->getTailBlock();
+        ByteBuffer *tailBlock = file->getTailBlock();
         tailBlock->mark_ = inode->size_;
         if (tailSize < writeCtx->count) {
           // write span blocks
-          const char* buf = writeCtx->write_buff + (writeCtx->count - tailSize);
+          const char *buf = writeCtx->write_buff + (writeCtx->count - tailSize);
           tailBlock->clear().putBytes(buf, tailSize);
         } else if ((writeCtx->offset & fs_context.blockMask) == 0) {
           // align small write case
@@ -74,8 +73,8 @@ void FastFS::writeComplete(fs_op_context* ctx) {
       }
     }
     // modify extents info
-    ExtentMap* dirtyExtents = file->inode_->dirtyExtents;
-    for (auto& extent : writeCtx->writeExtents) {
+    ExtentMap *dirtyExtents = file->inode_->dirtyExtents;
+    for (auto &extent : writeCtx->writeExtents) {
       if (extent.newId != 0) { // newAdd or copyOnWrite
         if (extent.index >= inode->extents_->size()) {
           // append case or sparse file
@@ -93,10 +92,9 @@ void FastFS::writeComplete(fs_op_context* ctx) {
           if (extent.newId != extent.extentId) {
             original = extent.extentId;
           }
-          dirtyExtents->emplace(extent.index,
-              std::pair<uint32_t, uint32_t>(original, extent.newId));
+          dirtyExtents->emplace(extent.index, std::pair<uint32_t, uint32_t>(original, extent.newId));
         } else { // extent written multi times after fsync
-          auto& extentInfo = iter->second;
+          auto &extentInfo = iter->second;
           fs_context.allocator->release(extentInfo.second);
           extentInfo.second = extent.newId;
         }
@@ -106,13 +104,13 @@ void FastFS::writeComplete(fs_op_context* ctx) {
     if (file->flags_ & O_SYNC) {
       writeCtx->writeExtents.clear();
       int fd = writeCtx->fd;
-      FSyncContext* fsyncCtx = new (ctx->private_data) FSyncContext();
+      FSyncContext *fsyncCtx = new (ctx->private_data) FSyncContext();
       fsyncCtx->fd = fd;
       return fsync(*ctx);
     }
   } else {
     // free allocated extents
-    for (WriteExtent& extentInfo : writeCtx->writeExtents) {
+    for (WriteExtent &extentInfo : writeCtx->writeExtents) {
       if (extentInfo.newId) {
         fs_context.allocator->release(extentInfo.newId);
       }
@@ -122,23 +120,21 @@ void FastFS::writeComplete(fs_op_context* ctx) {
   ctx->callback(ctx->cb_args, 0);
 }
 
-static void writeExtentComplete(
-    struct spdk_bdev_io *bdev_io, bool success, void *cb_arg) {
+static void writeExtentComplete(struct spdk_bdev_io *bdev_io, bool success, void *cb_arg) {
   if (bdev_io) {
     spdk_bdev_free_io(bdev_io);
   }
 
-  fs_op_context* ctx;
-  WriteContext* writeCtx;
+  fs_op_context *ctx;
+  WriteContext *writeCtx;
   if (!success && !bdev_io) { // read tail block or extent fail
-    ctx = reinterpret_cast<fs_op_context*>(cb_arg);
-    writeCtx = reinterpret_cast<WriteContext*>(ctx->private_data);
+    ctx = reinterpret_cast<fs_op_context *>(cb_arg);
+    writeCtx = reinterpret_cast<WriteContext *>(ctx->private_data);
   } else {
-    ByteBuffer* buffer = reinterpret_cast<ByteBuffer*>(cb_arg);
-    ctx = reinterpret_cast<fs_op_context*>(buffer->private_data);
-    writeCtx = reinterpret_cast<WriteContext*>(ctx->private_data);
-    if (!writeCtx->direct ||
-        buffer->p_buffer_ != writeCtx->direct_buff->p_buffer_) {
+    ByteBuffer *buffer = reinterpret_cast<ByteBuffer *>(cb_arg);
+    ctx = reinterpret_cast<fs_op_context *>(buffer->private_data);
+    writeCtx = reinterpret_cast<WriteContext *>(ctx->private_data);
+    if (!writeCtx->direct || buffer->p_buffer_ != writeCtx->direct_buff->p_buffer_) {
       ctx->fastfs->freeBuffer(buffer);
     }
   }
@@ -146,39 +142,38 @@ static void writeExtentComplete(
   writeCtx->success = (writeCtx->success & success);
   writeCtx->writedExtents++;
   // all WriteExtent commit and complete
-  if ((writeCtx->writingSize == writeCtx->count) &&
-      (writeCtx->writedExtents == writeCtx->writeExtents.size())) {
+  if ((writeCtx->writingSize == writeCtx->count) && (writeCtx->writedExtents == writeCtx->writeExtents.size())) {
     if (writeCtx->success) {
       ctx->fastfs->writeComplete(ctx);
     } else {
       // remove tail block since it maybe dirty
       writeCtx->file->clearTailBlock();
       // free new allocated extents
-      for (auto& extent : writeCtx->writeExtents) {
+      for (auto &extent : writeCtx->writeExtents) {
         if (extent.newId) {
           FastFS::fs_context.allocator->release(extent.newId);
         }
       }
       writeCtx->writeExtents.clear();
-      ctx->callback(ctx->cb_args, -5/*WriteDataFail*/);
+      ctx->callback(ctx->cb_args, -5 /*WriteDataFail*/);
     }
   }
 }
 
-static void copyOnWrite(struct spdk_bdev_io* bdev_io, bool success, void* cb_arg) {
+static void copyOnWrite(struct spdk_bdev_io *bdev_io, bool success, void *cb_arg) {
   if (bdev_io) {
     spdk_bdev_free_io(bdev_io);
   }
-  ByteBuffer* extentBuf = reinterpret_cast<ByteBuffer*>(cb_arg);
-  WriteExtent* extent = reinterpret_cast<WriteExtent*>(extentBuf->private_data);
-  fs_op_context* ctx = extent->op_ctx;
+  ByteBuffer *extentBuf = reinterpret_cast<ByteBuffer *>(cb_arg);
+  WriteExtent *extent = reinterpret_cast<WriteExtent *>(extentBuf->private_data);
+  fs_op_context *ctx = extent->op_ctx;
   if (!success) { // read extent fail
     ctx->fastfs->freeBuffer(extentBuf);
     return writeExtentComplete(nullptr, false, ctx);
   }
 
-  WriteContext* writeCtx = reinterpret_cast<WriteContext*>(ctx->private_data);
-  char* data = writeCtx->direct_buff->p_buffer_ + extent->bufOff;
+  WriteContext *writeCtx = reinterpret_cast<WriteContext *>(ctx->private_data);
+  char *data = writeCtx->direct_buff->p_buffer_ + extent->bufOff;
   extentBuf->putBytes(extent->extentOff, data, extent->bufLen);
   extentBuf->private_data = ctx;
   // allocate new extent for write
@@ -188,36 +183,39 @@ static void copyOnWrite(struct spdk_bdev_io* bdev_io, bool success, void* cb_arg
     ctx->fastfs->freeBuffer(extentBuf);
     return writeExtentComplete(nullptr, false, ctx);
   }
-  uint64_t bdevOff =
-      static_cast<uint64_t>(extent->newId) << FastFS::fs_context.extentBits;
-  spdk_bdev_write(FastFS::fs_context.bdev_desc, FastFS::fs_context.bdev_io_channel,
-      extentBuf->p_buffer_, bdevOff, FastFS::fs_context.extentSize,
-      writeExtentComplete, extentBuf);
+  uint64_t bdevOff = static_cast<uint64_t>(extent->newId) << FastFS::fs_context.extentBits;
+  spdk_bdev_write(FastFS::fs_context.bdev_desc,
+                  FastFS::fs_context.bdev_io_channel,
+                  extentBuf->p_buffer_,
+                  bdevOff,
+                  FastFS::fs_context.extentSize,
+                  writeExtentComplete,
+                  extentBuf);
 }
 
-static void writeExtent(struct spdk_bdev_io* bdev_io, bool success, void* cb_arg) {
+static void writeExtent(struct spdk_bdev_io *bdev_io, bool success, void *cb_arg) {
   if (bdev_io) { // bdev_io used for read tail block
     spdk_bdev_free_io(bdev_io);
   }
-  WriteExtent* extent = reinterpret_cast<WriteExtent*>(cb_arg);
-  fs_op_context* ctx = extent->op_ctx;
+  WriteExtent *extent = reinterpret_cast<WriteExtent *>(cb_arg);
+  fs_op_context *ctx = extent->op_ctx;
   if (!success) { // read tail block fail
     return writeExtentComplete(nullptr, false, ctx);
   }
 
-  WriteContext* writeCtx = reinterpret_cast<WriteContext*>(ctx->private_data);
+  WriteContext *writeCtx = reinterpret_cast<WriteContext *>(ctx->private_data);
   if (writeCtx->direct) {
     // skip non-required data
     extent->bufOff += writeCtx->direct_buff->position_;
   }
-  auto& fs_context = FastFS::fs_context;
+  auto &fs_context = FastFS::fs_context;
 
   if (writeCtx->append) {
     struct iovec iov[2];
     int iovcnt = 0;
     // write tail block
     if (!extent->newId && (writeCtx->offset & fs_context.blockMask)) {
-      ByteBuffer* tailBlock = writeCtx->file->tail_block;
+      ByteBuffer *tailBlock = writeCtx->file->tail_block;
       uint32_t tailSize = std::min(tailBlock->remaining(), writeCtx->count);
       tailBlock->putBytes(writeCtx->write_buff, tailSize);
       extent->bufOff += tailSize;
@@ -227,42 +225,57 @@ static void writeExtent(struct spdk_bdev_io* bdev_io, bool success, void* cb_arg
       iovcnt++;
     }
     // write remaining
-    ByteBuffer* buffer = writeCtx->direct ? writeCtx->direct_buff : ctx->fastfs->allocBuffer();
+    ByteBuffer *buffer = writeCtx->direct ? writeCtx->direct_buff : ctx->fastfs->allocBuffer();
     buffer->private_data = ctx;
     if (extent->bufLen > 0) {
       if (writeCtx->direct) {
         iov[iovcnt].iov_base = buffer->p_buffer_ + extent->bufOff;
       } else {
-        const char* targetBuf = writeCtx->write_buff + extent->bufOff;
+        const char *targetBuf = writeCtx->write_buff + extent->bufOff;
         buffer->putBytes(targetBuf, extent->bufLen);
         iov[iovcnt].iov_base = buffer->p_buffer_;
       }
-      iov[iovcnt].iov_len =
-          ((extent->bufLen + fs_context.blockMask) & ~(fs_context.blockMask));
+      iov[iovcnt].iov_len = ((extent->bufLen + fs_context.blockMask) & ~(fs_context.blockMask));
       iovcnt++;
-      spdk_bdev_writev(fs_context.bdev_desc, fs_context.bdev_io_channel,
-          iov, iovcnt, extent->offset, extent->len, writeExtentComplete, buffer);
+      spdk_bdev_writev(fs_context.bdev_desc,
+                       fs_context.bdev_io_channel,
+                       iov,
+                       iovcnt,
+                       extent->offset,
+                       extent->len,
+                       writeExtentComplete,
+                       buffer);
     } else {
       // small write case, write size less than one block
-      spdk_bdev_write(fs_context.bdev_desc, fs_context.bdev_io_channel,
-          iov[0].iov_base, extent->offset, extent->len, writeExtentComplete, buffer);
+      spdk_bdev_write(fs_context.bdev_desc,
+                      fs_context.bdev_io_channel,
+                      iov[0].iov_base,
+                      extent->offset,
+                      extent->len,
+                      writeExtentComplete,
+                      buffer);
     }
   } else if (extent->newId) {
     // sparse file
-    ByteBuffer* buffer = ctx->fastfs->allocBuffer();
+    ByteBuffer *buffer = ctx->fastfs->allocBuffer();
     memset(buffer->p_buffer_, 0, fs_context.extentSize);
     // TODO chenxu14 consider no direct case
-    char* data = writeCtx->direct_buff->p_buffer_ + extent->bufOff;
+    char *data = writeCtx->direct_buff->p_buffer_ + extent->bufOff;
     buffer->putBytes(extent->extentOff, data, extent->bufLen);
     buffer->private_data = ctx;
-    spdk_bdev_write(fs_context.bdev_desc, fs_context.bdev_io_channel,
-        buffer->p_buffer_, extent->offset, extent->len, writeExtentComplete, buffer);
+    spdk_bdev_write(fs_context.bdev_desc,
+                    fs_context.bdev_io_channel,
+                    buffer->p_buffer_,
+                    extent->offset,
+                    extent->len,
+                    writeExtentComplete,
+                    buffer);
   } else { // random write case
     if (extent->bufLen == fs_context.extentSize) {
       // whole extent write, no need to copy first
-      ByteBuffer* buffer = writeCtx->direct_buff;
+      ByteBuffer *buffer = writeCtx->direct_buff;
       // TODO chenxu14 consider no direct case
-      char* addr = buffer->p_buffer_ + extent->bufOff;
+      char *addr = buffer->p_buffer_ + extent->bufOff;
       buffer->private_data = ctx;
       // allocate new extent for write
       extent->newId = fs_context.allocator->allocate();
@@ -270,37 +283,46 @@ static void writeExtent(struct spdk_bdev_io* bdev_io, bool success, void* cb_arg
         SPDK_WARNLOG("no free extents.\n");
         return writeExtentComplete(nullptr, false, ctx);
       }
-      uint64_t bdevOff =
-          static_cast<uint64_t>(extent->newId) << fs_context.extentBits;
-      spdk_bdev_write(fs_context.bdev_desc, fs_context.bdev_io_channel,
-          addr, bdevOff, fs_context.extentSize, writeExtentComplete, buffer);
+      uint64_t bdevOff = static_cast<uint64_t>(extent->newId) << fs_context.extentBits;
+      spdk_bdev_write(fs_context.bdev_desc,
+                      fs_context.bdev_io_channel,
+                      addr,
+                      bdevOff,
+                      fs_context.extentSize,
+                      writeExtentComplete,
+                      buffer);
     } else {
       // should do copy on write
-      ByteBuffer* buffer = ctx->fastfs->allocBuffer();
+      ByteBuffer *buffer = ctx->fastfs->allocBuffer();
       buffer->private_data = extent;
-      spdk_bdev_read(fs_context.bdev_desc, fs_context.bdev_io_channel,
-          buffer->p_buffer_, extent->offset, extent->len, copyOnWrite, buffer);
+      spdk_bdev_read(fs_context.bdev_desc,
+                     fs_context.bdev_io_channel,
+                     buffer->p_buffer_,
+                     extent->offset,
+                     extent->len,
+                     copyOnWrite,
+                     buffer);
     }
   }
 }
 
-static void writeRange(struct spdk_bdev_io* bdev_io, bool success, void* cb_arg) {
-  fs_op_context* ctx = nullptr;
+static void writeRange(struct spdk_bdev_io *bdev_io, bool success, void *cb_arg) {
+  fs_op_context *ctx = nullptr;
   if (bdev_io) { // used by paddingZero
     spdk_bdev_free_io(bdev_io);
-    ByteBuffer* buffer = reinterpret_cast<ByteBuffer*>(cb_arg);
-    ctx = reinterpret_cast<fs_op_context*>(buffer->private_data);
+    ByteBuffer *buffer = reinterpret_cast<ByteBuffer *>(cb_arg);
+    ctx = reinterpret_cast<fs_op_context *>(buffer->private_data);
     ctx->fastfs->freeBuffer(buffer);
     if (!success) {
-      return ctx->callback(ctx->cb_args, -2/*PaddingZeroFailed*/);
+      return ctx->callback(ctx->cb_args, -2 /*PaddingZeroFailed*/);
     }
   } else {
-    ctx = reinterpret_cast<fs_op_context*>(cb_arg);
+    ctx = reinterpret_cast<fs_op_context *>(cb_arg);
   }
 
-  WriteContext* writeCtx = reinterpret_cast<WriteContext*>(ctx->private_data);
-  auto& fs_context = FastFS::fs_context;
-  auto& file = *(writeCtx->file);
+  WriteContext *writeCtx = reinterpret_cast<WriteContext *>(ctx->private_data);
+  auto &fs_context = FastFS::fs_context;
+  auto &file = *(writeCtx->file);
   uint64_t offset = writeCtx->offset;
   WriteExtent extent;
   uint64_t extentOffset = offset & fs_context.extentMask;
@@ -310,7 +332,7 @@ static void writeRange(struct spdk_bdev_io* bdev_io, bool success, void* cb_arg)
       extent.extentId = fs_context.allocator->allocate();
       if (extent.extentId == UINT32_MAX) {
         SPDK_WARNLOG("no free extents.\n");
-        return ctx->callback(ctx->cb_args, -3/*NoFreeExtents*/);
+        return ctx->callback(ctx->cb_args, -3 /*NoFreeExtents*/);
       }
       extent.newId = extent.extentId;
     }
@@ -319,18 +341,15 @@ static void writeRange(struct spdk_bdev_io* bdev_io, bool success, void* cb_arg)
     // compute bdev's offset & length
     extent.bufOff = 0;
     extent.extentOff = extentOffset;
-    WriteExtent* target = nullptr;
+    WriteExtent *target = nullptr;
     if (writeCtx->append) {
       // align extentOffset with blockSize
       extentOffset -= blockOffset;
-      extent.offset =
-          (static_cast<uint64_t>(extent.extentId) << fs_context.extentBits)
-          + extentOffset;
+      extent.offset = (static_cast<uint64_t>(extent.extentId) << fs_context.extentBits) + extentOffset;
       // most cases, one extent is enough
       if (writeCtx->writingSize >= writeCtx->count) {
         writeCtx->writingSize = writeCtx->count;
-        extent.len = (writeCtx->count + blockOffset + fs_context.blockMask)
-            & ~(fs_context.blockMask);
+        extent.len = (writeCtx->count + blockOffset + fs_context.blockMask) & ~(fs_context.blockMask);
       } else {
         extent.len = fs_context.extentSize - extentOffset;
       }
@@ -338,20 +357,22 @@ static void writeRange(struct spdk_bdev_io* bdev_io, bool success, void* cb_arg)
       target = &writeCtx->writeExtents.emplace_back(extent);
       target->op_ctx = ctx;
       // tail block's data maybe need in append case
-      if (blockOffset != 0 &&
-          (!file.tail_block || file.tail_block->position() == 0)) {
-        ByteBuffer* tailBlockBuf = file.getTailBlock();
+      if (blockOffset != 0 && (!file.tail_block || file.tail_block->position() == 0)) {
+        ByteBuffer *tailBlockBuf = file.getTailBlock();
         // advance position to block's write cursor
         tailBlockBuf->position(blockOffset);
-        spdk_bdev_read(fs_context.bdev_desc, fs_context.bdev_io_channel,
-            tailBlockBuf->p_buffer_, extent.offset, fs_context.blockSize,
-            writeExtent, target);
+        spdk_bdev_read(fs_context.bdev_desc,
+                       fs_context.bdev_io_channel,
+                       tailBlockBuf->p_buffer_,
+                       extent.offset,
+                       fs_context.blockSize,
+                       writeExtent,
+                       target);
       } else {
         writeExtent(nullptr, true, target);
       }
     } else { // random write
-      extent.offset =
-          static_cast<uint64_t>(extent.extentId) << fs_context.extentBits;
+      extent.offset = static_cast<uint64_t>(extent.extentId) << fs_context.extentBits;
       extent.len = fs_context.extentSize;
       if (writeCtx->writingSize >= writeCtx->count) {
         writeCtx->writingSize = writeCtx->count;
@@ -367,24 +388,22 @@ static void writeRange(struct spdk_bdev_io* bdev_io, bool success, void* cb_arg)
   while (writeCtx->writingSize < writeCtx->count) {
     extent.extentOff = 0;
     extent.newId = 0;
-    if (!file.inode_->getExtent(
-        offset + writeCtx->writingSize, extent.index, extent.extentId)) {
+    if (!file.inode_->getExtent(offset + writeCtx->writingSize, extent.index, extent.extentId)) {
       extent.extentId = fs_context.allocator->allocate();
       if (extent.extentId == UINT32_MAX) {
         SPDK_WARNLOG("no free extents.\n");
         // free allocated extents
-        for (auto& e : writeCtx->writeExtents) {
+        for (auto &e : writeCtx->writeExtents) {
           if (e.newId) {
             fs_context.allocator->release(e.newId);
           }
         }
         writeCtx->writeExtents.clear();
-        return ctx->callback(ctx->cb_args, -4/*NoFreeExtents*/);
+        return ctx->callback(ctx->cb_args, -4 /*NoFreeExtents*/);
       }
       extent.newId = extent.extentId;
     }
-    extent.offset =
-        static_cast<uint64_t>(extent.extentId) << fs_context.extentBits;
+    extent.offset = static_cast<uint64_t>(extent.extentId) << fs_context.extentBits;
     extent.bufOff = writeCtx->writingSize;
     uint32_t remaining = writeCtx->remainingSize();
     if (remaining < fs_context.extentSize) { // the last extent
@@ -400,36 +419,40 @@ static void writeRange(struct spdk_bdev_io* bdev_io, bool success, void* cb_arg)
       extent.bufLen = fs_context.extentSize;
       writeCtx->writingSize += fs_context.extentSize;
     }
-    auto& target = writeCtx->writeExtents.emplace_back(extent);
+    auto &target = writeCtx->writeExtents.emplace_back(extent);
     target.op_ctx = ctx;
     writeExtent(nullptr, true, &target);
   }
 }
 
-static void paddingZero(struct spdk_bdev_io* bdev_io, bool success, void* cb_arg) {
+static void paddingZero(struct spdk_bdev_io *bdev_io, bool success, void *cb_arg) {
   spdk_bdev_free_io(bdev_io);
-  ByteBuffer* buffer = reinterpret_cast<ByteBuffer*>(cb_arg);
-  fs_op_context* ctx = reinterpret_cast<fs_op_context*>(buffer->private_data);
-  WriteContext* writeCtx = reinterpret_cast<WriteContext*>(ctx->private_data);
-  auto& fs_context = FastFS::fs_context;
+  ByteBuffer *buffer = reinterpret_cast<ByteBuffer *>(cb_arg);
+  fs_op_context *ctx = reinterpret_cast<fs_op_context *>(buffer->private_data);
+  WriteContext *writeCtx = reinterpret_cast<WriteContext *>(ctx->private_data);
+  auto &fs_context = FastFS::fs_context;
   if (!success) {
     ctx->fastfs->freeBuffer(buffer);
-    return ctx->callback(ctx->cb_args, -2/*PaddingZeroFailed*/);
+    return ctx->callback(ctx->cb_args, -2 /*PaddingZeroFailed*/);
   }
-  uint64_t extentOffset =
-      writeCtx->file->inode_->size_ & fs_context.extentMask;
+  uint64_t extentOffset = writeCtx->file->inode_->size_ & fs_context.extentMask;
   uint64_t len = fs_context.extentSize - extentOffset;
   memset(buffer->p_buffer_ + extentOffset, 0, len);
-  spdk_bdev_write(fs_context.bdev_desc, fs_context.bdev_io_channel,
-      buffer->p_buffer_, buffer->mark_, fs_context.extentSize, writeRange, buffer);
+  spdk_bdev_write(fs_context.bdev_desc,
+                  fs_context.bdev_io_channel,
+                  buffer->p_buffer_,
+                  buffer->mark_,
+                  fs_context.extentSize,
+                  writeRange,
+                  buffer);
 }
 
-void FastFS::write(fs_op_context& ctx) {
-  WriteContext* writeCtx = reinterpret_cast<WriteContext*>(ctx.private_data);
+void FastFS::write(fs_op_context &ctx) {
+  WriteContext *writeCtx = reinterpret_cast<WriteContext *>(ctx.private_data);
   if (writeCtx->fd > fs_context.maxFiles) {
     return ctx.callback(ctx.cb_args, -1);
   }
-  FastFile& file = (*files)[writeCtx->fd];
+  FastFile &file = (*files)[writeCtx->fd];
 
   // determine write offset
   uint64_t offset = file.pos_;
@@ -441,18 +464,22 @@ void FastFS::write(fs_op_context& ctx) {
   writeCtx->reset(&file, offset);
 
   if (offset > file.inode_->size_) {
-    auto& extents = *(file.inode_->extents_);
+    auto &extents = *(file.inode_->extents_);
     if (extents.size() > 0) {
       // padding zero with last extent
       uint32_t extentId = extents[extents.size() - 1];
       if (extentId != UINT32_MAX) { // truncate case
-        uint64_t offset =
-            static_cast<uint64_t>(extentId) << fs_context.extentBits;
-        ByteBuffer* buffer = allocBuffer();
+        uint64_t offset = static_cast<uint64_t>(extentId) << fs_context.extentBits;
+        ByteBuffer *buffer = allocBuffer();
         buffer->private_data = &ctx;
         buffer->mark_ = offset;
-        spdk_bdev_read(fs_context.bdev_desc, fs_context.bdev_io_channel,
-            buffer->p_buffer_, offset, fs_context.extentSize, paddingZero, buffer);
+        spdk_bdev_read(fs_context.bdev_desc,
+                       fs_context.bdev_io_channel,
+                       buffer->p_buffer_,
+                       offset,
+                       fs_context.extentSize,
+                       paddingZero,
+                       buffer);
         return;
       }
     }
@@ -460,12 +487,12 @@ void FastFS::write(fs_op_context& ctx) {
   writeRange(nullptr, true, &ctx);
 }
 
-static void fsyncComplete(void* cb_args, int code) {
-  fs_op_context* ctx = reinterpret_cast<fs_op_context*>(cb_args);
-  FSyncContext* syncCtx = reinterpret_cast<FSyncContext*>(ctx->private_data);
+static void fsyncComplete(void *cb_args, int code) {
+  fs_op_context *ctx = reinterpret_cast<fs_op_context *>(cb_args);
+  FSyncContext *syncCtx = reinterpret_cast<FSyncContext *>(ctx->private_data);
   // release dirty extents
   if (syncCtx->dirtyExtents) {
-    for (auto& [index, extentInfo] : *syncCtx->dirtyExtents) {
+    for (auto &[index, extentInfo] : *syncCtx->dirtyExtents) {
       if (extentInfo.first != UINT32_MAX) {
         FastFS::fs_context.allocator->release(extentInfo.first);
       }
@@ -476,14 +503,14 @@ static void fsyncComplete(void* cb_args, int code) {
   ctx->callback(ctx->cb_args, code);
 }
 
-void FastFS::fsync(fs_op_context& ctx) {
-  FSyncContext* syncCtx = reinterpret_cast<FSyncContext*>(ctx.private_data);
+void FastFS::fsync(fs_op_context &ctx) {
+  FSyncContext *syncCtx = reinterpret_cast<FSyncContext *>(ctx.private_data);
   if (syncCtx->fd > fs_context.maxFiles) {
     return ctx.callback(ctx.cb_args, -1);
   }
 
   int32_t size = 14; /*ino(4) + size(8) + extentsCnt(2)*/
-  FastFile& file = (*files)[syncCtx->fd];
+  FastFile &file = (*files)[syncCtx->fd];
   syncCtx->file = &file;
   syncCtx->dirtyExtents = nullptr;
   if (file.inode_->dirtyExtents && file.inode_->dirtyExtents->size() > 0) {
@@ -496,7 +523,7 @@ void FastFS::fsync(fs_op_context& ctx) {
     return fsyncComplete(&ctx, 0);
   }
 
-  EditOp* editOp = journal->allocEditOp();
+  EditOp *editOp = journal->allocEditOp();
   editOp->opctx = syncCtx;
   editOp->type = 4;
   editOp->size = size;

@@ -5,7 +5,7 @@
 
 #include "FastFS.h"
 
-void ReadContext::reset(FastFile* f) {
+void ReadContext::reset(FastFile *f) {
   file = f;
   extentsToRead = 0;
   extentsReaded = 0;
@@ -13,8 +13,7 @@ void ReadContext::reset(FastFile* f) {
   success = true;
 }
 
-void ReadContext::dirctRead(
-    FastFS* fs, int handle, uint64_t off, uint32_t len) {
+void ReadContext::dirctRead(FastFS *fs, int handle, uint64_t off, uint32_t len) {
   fd = handle;
   pread = true;
   direct = true;
@@ -24,21 +23,20 @@ void ReadContext::dirctRead(
   direct_cursor = direct_buff->position();
 }
 
-static void readExtentComplete(
-    struct spdk_bdev_io* bdev_io, bool success, void *cb_arg) {
+static void readExtentComplete(struct spdk_bdev_io *bdev_io, bool success, void *cb_arg) {
   if (bdev_io) {
     spdk_bdev_free_io(bdev_io);
   }
 
-  ByteBuffer* buffer = reinterpret_cast<ByteBuffer*>(cb_arg);
-  fs_op_context* ctx = reinterpret_cast<fs_op_context*>(buffer->private_data);
-  ReadContext* readCtx = reinterpret_cast<ReadContext*>(ctx->private_data);
+  ByteBuffer *buffer = reinterpret_cast<ByteBuffer *>(cb_arg);
+  fs_op_context *ctx = reinterpret_cast<fs_op_context *>(buffer->private_data);
+  ReadContext *readCtx = reinterpret_cast<ReadContext *>(ctx->private_data);
   readCtx->extentsReaded++;
   readCtx->success = (readCtx->success & success);
   if (!readCtx->direct) {
     if (success) {
       // use mark_ to decision target cursor
-      char* buf = readCtx->read_buff + buffer->mark_;
+      char *buf = readCtx->read_buff + buffer->mark_;
       memcpy(buf, buffer->getBuffer(), buffer->remaining());
     }
     // [NOTICE] can't do this before memcpy
@@ -46,25 +44,24 @@ static void readExtentComplete(
   }
 
   // all extent commit and complete
-  if ((readCtx->readingSize == readCtx->count) &&
-      (readCtx->extentsReaded == readCtx->extentsToRead)) {
+  if ((readCtx->readingSize == readCtx->count) && (readCtx->extentsReaded == readCtx->extentsToRead)) {
     if (!readCtx->pread) {
       readCtx->file->pos_ += readCtx->count;
     }
-    int code = readCtx->success ? 0 : -4/*ReadDataFail*/;
+    int code = readCtx->success ? 0 : -4 /*ReadDataFail*/;
     ctx->callback(ctx->cb_args, code);
   }
 }
 
-void FastFS::read(fs_op_context& ctx) {
-  ReadContext* readCtx = reinterpret_cast<ReadContext*>(ctx.private_data);
+void FastFS::read(fs_op_context &ctx) {
+  ReadContext *readCtx = reinterpret_cast<ReadContext *>(ctx.private_data);
   if (readCtx->fd > fs_context.maxFiles) {
     return ctx.callback(ctx.cb_args, -1);
   }
-  FastFile& file = (*files)[readCtx->fd];
+  FastFile &file = (*files)[readCtx->fd];
   uint64_t offset = readCtx->pread ? readCtx->offset : file.pos_;
   if (offset > file.inode_->size_) {
-    return ctx.callback(ctx.cb_args, -2/*EOF*/);
+    return ctx.callback(ctx.cb_args, -2 /*EOF*/);
   }
 
   readCtx->reset(&file);
@@ -90,7 +87,7 @@ void FastFS::read(fs_op_context& ctx) {
     extentOffset -= blockOffset;
 
     readCtx->extentsToRead++;
-    ByteBuffer* extentBuf = nullptr;
+    ByteBuffer *extentBuf = nullptr;
     if (readCtx->direct) {
       extentBuf = readCtx->direct_buff;
     } else {
@@ -102,8 +99,7 @@ void FastFS::read(fs_op_context& ctx) {
       // most cases, one extent is enough
       readCtx->readingSize = readCtx->count;
       extentBuf->limit(blockOffset + readCtx->count);
-      nbytes = (extentBuf->limit() + fs_context.blockMask)
-          & ~(fs_context.blockMask);
+      nbytes = (extentBuf->limit() + fs_context.blockMask) & ~(fs_context.blockMask);
     } else {
       nbytes = fs_context.extentSize - extentOffset;
       extentBuf->limit(nbytes);
@@ -114,10 +110,14 @@ void FastFS::read(fs_op_context& ctx) {
       readExtentComplete(nullptr, true, extentBuf);
     } else {
       // read extent data
-      bdevOffset = (static_cast<uint64_t>(extentId) << fs_context.extentBits)
-          + extentOffset;
-      spdk_bdev_read(fs_context.bdev_desc, fs_context.bdev_io_channel,
-          extentBuf->p_buffer_, bdevOffset, nbytes, readExtentComplete, extentBuf);
+      bdevOffset = (static_cast<uint64_t>(extentId) << fs_context.extentBits) + extentOffset;
+      spdk_bdev_read(fs_context.bdev_desc,
+                     fs_context.bdev_io_channel,
+                     extentBuf->p_buffer_,
+                     bdevOffset,
+                     nbytes,
+                     readExtentComplete,
+                     extentBuf);
     }
     index++;
   }
@@ -125,7 +125,7 @@ void FastFS::read(fs_op_context& ctx) {
   // read other extents
   while (readCtx->readingSize < readCtx->count) {
     readCtx->extentsToRead++;
-    ByteBuffer* extentBuf = nullptr;
+    ByteBuffer *extentBuf = nullptr;
     if (readCtx->direct) {
       extentBuf = readCtx->direct_buff;
       if (readCtx->extentsToRead > 1) {
@@ -158,8 +158,13 @@ void FastFS::read(fs_op_context& ctx) {
       readExtentComplete(nullptr, true, extentBuf);
     } else {
       bdevOffset = (static_cast<uint64_t>(extentId) << fs_context.extentBits);
-      spdk_bdev_read(fs_context.bdev_desc, fs_context.bdev_io_channel,
-          extentBuf->getBuffer(), bdevOffset, nbytes, readExtentComplete, extentBuf);
+      spdk_bdev_read(fs_context.bdev_desc,
+                     fs_context.bdev_io_channel,
+                     extentBuf->getBuffer(),
+                     bdevOffset,
+                     nbytes,
+                     readExtentComplete,
+                     extentBuf);
     }
     index++;
   }

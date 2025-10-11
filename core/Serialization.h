@@ -6,8 +6,9 @@
 #ifndef FASTFS_SERDE_H_
 #define FASTFS_SERDE_H_
 
-#include "ByteBuffer.h"
 #include <string_view>
+
+#include "ByteBuffer.h"
 
 class FastInode;
 
@@ -17,10 +18,10 @@ enum FileType : int {
   FASTFS_SYMBAL_LINK = 2
 };
 
-typedef void (*op_cb)(void* cb_args, int code);
+typedef void (*op_cb)(void *cb_args, int code);
 
 class SuperBlock {
- public:
+  public:
   uint64_t ckptInodesLoc;
   uint64_t ckptDentryLoc;
   uint64_t lastTxid;
@@ -32,7 +33,7 @@ class SuperBlock {
   uint32_t flags;
   uint32_t version;
 
-  void serialize(ByteBuffer* buf) {
+  void serialize(ByteBuffer *buf) {
     buf->putBytes("FAsT", 4);
     buf->write<uint64_t>(ckptInodesLoc);
     buf->write<uint64_t>(ckptDentryLoc);
@@ -46,8 +47,8 @@ class SuperBlock {
     buf->write<uint32_t>(version);
   }
 
-  bool deserialize(ByteBuffer* buf) {
-    char magicWord[4] {0};
+  bool deserialize(ByteBuffer *buf) {
+    char magicWord[4]{0};
     buf->getBytes(magicWord, 4);
     if (memcmp(magicWord, "FAsT", 4) != 0) {
       return false;
@@ -67,7 +68,7 @@ class SuperBlock {
 };
 
 class INodeFile {
- public:
+  public:
   static constexpr int32_t kFixSize = 22;
   uint32_t ino;
   uint32_t parent_id;
@@ -76,7 +77,7 @@ class INodeFile {
   std::string_view name;
   FileType type;
 
-  void serialize(ByteBuffer* buf) {
+  void serialize(ByteBuffer *buf) {
     buf->write<uint32_t>(ino);
     buf->write<uint32_t>(parent_id);
     buf->write<uint32_t>(mode);
@@ -87,7 +88,7 @@ class INodeFile {
     buf->putByte((type == FASTFS_DIR ? 1 : 0));
   }
 
-  bool deserialize(ByteBuffer* buf) {
+  bool deserialize(ByteBuffer *buf) {
     bool res = true;
     buf->read<uint32_t>(ino);
     buf->read<uint32_t>(parent_id);
@@ -105,7 +106,7 @@ class INodeFile {
 };
 
 class CreateContext {
- public:
+  public:
   uint32_t parentId;
   std::string_view name;
   uint32_t ino; // used by journal replay case
@@ -115,11 +116,11 @@ class CreateContext {
   std::string_view path; // should start with '/'
   uint32_t pos;
   op_cb callback;
-  void* args;
+  void *args;
 
   CreateContext() : ino(UINT32_MAX) {}
 
-  void serialize(ByteBuffer* buf) { // TODO chenxu14 add magic header
+  void serialize(ByteBuffer *buf) { // TODO chenxu14 add magic header
     buf->write<uint32_t>(parentId);
     uint8_t nameLen = name.size();
     buf->write<uint8_t>(nameLen);
@@ -129,7 +130,7 @@ class CreateContext {
     buf->putByte((type == FASTFS_DIR ? 1 : 0));
   }
 
-  void deserialize(ByteBuffer* buf) {
+  void deserialize(ByteBuffer *buf) {
     buf->read<uint32_t>(parentId);
     uint8_t nameLen = 0;
     buf->read<uint8_t>(nameLen);
@@ -144,12 +145,12 @@ class CreateContext {
 };
 
 class DeleteContext {
- public:
+  public:
   uint32_t parentId;
   std::string name;
   bool recursive = false;
 
-  void serialize(ByteBuffer* buf) {
+  void serialize(ByteBuffer *buf) {
     buf->write<uint32_t>(parentId);
     uint8_t nameLen = name.size();
     buf->write<uint8_t>(nameLen);
@@ -158,7 +159,7 @@ class DeleteContext {
     buf->putByte(val);
   }
 
-  void deserialize(ByteBuffer* buf) {
+  void deserialize(ByteBuffer *buf) {
     buf->read<uint32_t>(parentId);
     uint8_t nameLen = 0;
     buf->read<uint8_t>(nameLen);
@@ -171,29 +172,29 @@ class DeleteContext {
 };
 
 class TruncateContext {
- public:
+  public:
   uint32_t ino;
   uint64_t size;
 
-  void serialize(ByteBuffer* buf) {
+  void serialize(ByteBuffer *buf) {
     buf->write<uint32_t>(ino);
     buf->write<uint64_t>(size);
   }
 
-  void deserialize(ByteBuffer* buf) {
+  void deserialize(ByteBuffer *buf) {
     buf->read<uint32_t>(ino);
     buf->read<uint64_t>(size);
   }
 };
 
 class RenameContext {
- public:
+  public:
   uint32_t olddir;
   uint32_t newdir;
   std::string oldname;
   std::string newname;
 
-  void serialize(ByteBuffer* buf) {
+  void serialize(ByteBuffer *buf) {
     buf->write<uint32_t>(olddir);
     buf->write<uint32_t>(newdir);
     uint8_t nameLen = oldname.size();
@@ -204,7 +205,7 @@ class RenameContext {
     buf->putBytes(newname.data(), nameLen);
   }
 
-  void deserialize(ByteBuffer* buf) {
+  void deserialize(ByteBuffer *buf) {
     buf->read<uint32_t>(olddir);
     buf->read<uint32_t>(newdir);
     uint8_t nameLen = 0;
