@@ -6,27 +6,25 @@
 #define FAST_FS_BYTE_BUFFER_H_
 
 #include <cstdlib>
-#include <string>
 #include <iostream>
-#include <string.h>
 #include <memory>
+#include <string.h>
+#include <string>
+
 #include "spdk/env.h"
 
 #define DEFAULT_BUFFER_SIZE 2048
 
 class ByteBuffer {
-public:
-  ByteBuffer(uint32_t capacity = DEFAULT_BUFFER_SIZE,
-      bool alloc = true, int32_t numa = 0, int32_t align = 1)
-      : mark_(0), limit_(capacity), position_(0), capacity_(capacity), alloc_(alloc) {
+  public:
+  ByteBuffer(uint32_t capacity = DEFAULT_BUFFER_SIZE, bool alloc = true, int32_t numa = 0, int32_t align = 1)
+    : mark_(0), limit_(capacity), position_(0), capacity_(capacity), alloc_(alloc) {
     if (alloc_) {
-      p_buffer_ = static_cast<char*>(spdk_dma_zmalloc_socket(capacity_, align, NULL, numa));
+      p_buffer_ = static_cast<char *>(spdk_dma_zmalloc_socket(capacity_, align, NULL, numa));
     }
   }
 
-  ByteBuffer(char* buffer, uint32_t size) : ByteBuffer(size, false) {
-    p_buffer_ = buffer;
-  }
+  ByteBuffer(char *buffer, uint32_t size) : ByteBuffer(size, false) { p_buffer_ = buffer; }
 
   ~ByteBuffer() {
     if (alloc_ && p_buffer_) {
@@ -35,7 +33,7 @@ public:
     p_buffer_ = nullptr;
   }
 
-  ByteBuffer& limit(uint32_t newLimit) {
+  ByteBuffer &limit(uint32_t newLimit) {
     if (position_ > newLimit) {
       position_ = newLimit;
     }
@@ -43,25 +41,25 @@ public:
     return *this;
   }
 
-  ByteBuffer& position(uint32_t newPosition) {
+  ByteBuffer &position(uint32_t newPosition) {
     position_ = newPosition;
     return *this;
   }
 
-  ByteBuffer& skip(uint32_t len) {
+  ByteBuffer &skip(uint32_t len) {
     position_ += len;
     return *this;
   }
 
-  ByteBuffer* duplicate() {
-    ByteBuffer* newBuffer = new ByteBuffer(capacity_, false);
+  ByteBuffer *duplicate() {
+    ByteBuffer *newBuffer = new ByteBuffer(capacity_, false);
     newBuffer->p_buffer_ = p_buffer_;
     newBuffer->limit(limit_);
     newBuffer->position(position_);
     return newBuffer;
   }
 
-  ByteBuffer* slice() {
+  ByteBuffer *slice() {
     ByteBuffer *newBuffer = new ByteBuffer(remaining(), false);
     newBuffer->p_buffer_ = p_buffer_ + position_;
     newBuffer->limit(remaining());
@@ -69,31 +67,31 @@ public:
     return newBuffer;
   }
 
-  ByteBuffer& clear() {
+  ByteBuffer &clear() {
     position_ = 0;
     mark_ = 0;
     limit_ = capacity_;
     return *this;
   }
 
-  ByteBuffer& flip() {
+  ByteBuffer &flip() {
     limit_ = position_;
     position_ = 0;
     mark_ = 0;
     return *this;
   }
 
-  ByteBuffer& mark() {
+  ByteBuffer &mark() {
     mark_ = position_;
     return *this;
   }
 
-  ByteBuffer& reset() {
+  ByteBuffer &reset() {
     position_ = mark_;
     return *this;
   }
 
-  bool putBytes(const char* buf, uint32_t len) {
+  bool putBytes(const char *buf, uint32_t len) {
     if (!p_buffer_ || position_ + len > capacity_) {
       return false;
     }
@@ -102,7 +100,7 @@ public:
     return true;
   }
 
-  bool putBytes(uint32_t index, const char* buf, uint32_t len) {
+  bool putBytes(uint32_t index, const char *buf, uint32_t len) {
     if (!p_buffer_ || index + len > capacity_) {
       return false;
     }
@@ -126,7 +124,7 @@ public:
     return true;
   }
 
-  template<typename T>
+  template <typename T>
   bool write(T data) {
     uint32_t len = sizeof(data);
     if (!p_buffer_ || position_ + len > capacity_) {
@@ -137,7 +135,7 @@ public:
     return true;
   }
 
-  template<typename T>
+  template <typename T>
   bool pwrite(uint32_t index, T data) {
     uint32_t len = sizeof(data);
     if (!p_buffer_ || index + len > capacity_) {
@@ -147,7 +145,7 @@ public:
     return true;
   }
 
-  bool getBytes(char* buf, uint32_t len) {
+  bool getBytes(char *buf, uint32_t len) {
     if (!p_buffer_ || position_ + len > limit_) {
       return false;
     }
@@ -156,7 +154,7 @@ public:
     return true;
   }
 
-  bool getBytes(uint32_t index, char* buf, uint32_t len) const {
+  bool getBytes(uint32_t index, char *buf, uint32_t len) const {
     if (!p_buffer_ || index + len > limit_) {
       return false;
     }
@@ -164,7 +162,7 @@ public:
     return true;
   }
 
-  bool getByte(char& val) {
+  bool getByte(char &val) {
     if (!p_buffer_ || position_ >= limit_) {
       return false;
     }
@@ -172,7 +170,7 @@ public:
     return true;
   }
 
-  bool getByte(uint32_t index, char& val) const {
+  bool getByte(uint32_t index, char &val) const {
     if (!p_buffer_ || index >= limit_) {
       return false;
     }
@@ -180,61 +178,49 @@ public:
     return true;
   }
 
-  template<typename T>
-  bool read(T& val) {
+  template <typename T>
+  bool read(T &val) {
     uint32_t len = sizeof(val);
     if (!p_buffer_ || position_ + len > limit_) {
       return false;
     }
-    val = *((T *) &p_buffer_[position_]);
+    val = *((T *)&p_buffer_[position_]);
     position_ += len;
     return true;
   }
 
-  template<typename T>
-  bool pread(uint32_t index, T& val) const {
+  template <typename T>
+  bool pread(uint32_t index, T &val) const {
     uint32_t len = sizeof(val);
     if (!p_buffer_ || index + len > limit_) {
       return false;
     }
-    val = *((T *) &p_buffer_[index]);
+    val = *((T *)&p_buffer_[index]);
     return true;
   }
 
-  uint32_t remaining() const {
-    return position_ < limit_ ? limit_ - position_ : 0;
-  }
+  uint32_t remaining() const { return position_ < limit_ ? limit_ - position_ : 0; }
 
-  bool writable(int size) {
-    return position_ + size < limit_;
-  }
+  bool writable(int size) { return position_ + size < limit_; }
 
-  uint32_t capacity() const {
-    return capacity_;
-  }
+  uint32_t capacity() const { return capacity_; }
 
-  uint32_t position() const {
-    return position_;
-  }
+  uint32_t position() const { return position_; }
 
-  uint32_t limit() const {
-    return limit_;
-  }
+  uint32_t limit() const { return limit_; }
 
-  char* getBuffer() {
-    return p_buffer_ + position_;
-  }
+  char *getBuffer() { return p_buffer_ + position_; }
 
- public:
+  public:
   uint64_t mark_;
   uint32_t limit_;
   uint32_t position_;
   uint32_t capacity_;
-  char* p_buffer_ = nullptr;
-  ByteBuffer* next = nullptr;
-  void* private_data = nullptr;
+  char *p_buffer_ = nullptr;
+  ByteBuffer *next = nullptr;
+  void *private_data = nullptr;
   bool alloc_;
   char padding[8]; // align cache line
 };
 
-#endif  /* FAST_FS_BYTE_BUFFER_H_ */
+#endif /* FAST_FS_BYTE_BUFFER_H_ */

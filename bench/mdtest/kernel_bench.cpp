@@ -2,13 +2,13 @@
  * Copyright (C) 2025 chenxu14
  * SPDX-License-Identifier: BSD-3-Clause
  */
-#include <sys/stat.h>
 #include <fcntl.h>
-#include <unistd.h>
-#include <string>
 #include <string.h>
+#include <string>
+#include <sys/stat.h>
+#include <unistd.h>
 
-#define FILEMODE S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP|S_IROTH
+#define FILEMODE S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH
 
 static int subdirs = 1024;
 static int files_per_dir = 128;
@@ -21,7 +21,7 @@ struct timespec time_end;
 
 struct fs_bench_context {
   uint32_t size = 4096;
-  void* data = nullptr;
+  void *data = nullptr;
   bool verify = false;
   int writeFlags = 0;
   fs_bench_context() {
@@ -67,8 +67,9 @@ static void remove() {
   auto d = timespec_diff(time_start, time_end);
   long inodes = subdirs * files_per_dir + subdirs;
   printf("[Remove] delete %ld inodes use %ld ms, ops is %s.\n",
-      inodes, (long)(d.tv_sec * 1000 + d.tv_nsec / 1000000.0),
-      std::to_string(inodes / ((double) d.tv_sec + d.tv_nsec / 1000000000.0)).c_str());
+         inodes,
+         (long)(d.tv_sec * 1000 + d.tv_nsec / 1000000.0),
+         std::to_string(inodes / ((double)d.tv_sec + d.tv_nsec / 1000000000.0)).c_str());
 }
 
 static void read() {
@@ -78,7 +79,7 @@ static void read() {
       std::string path = PATH_PREFIX + std::to_string(i) + "/file." + std::to_string(j);
       int fd = open(path.c_str(), O_RDONLY, FILEMODE);
       if (readWrite) {
-        void* read_buff = nullptr;
+        void *read_buff = nullptr;
         if (DIRECT_IO) {
           if (posix_memalign(&read_buff, getpagesize(), ctx.size) != 0) {
             printf("alloc read buffer failed.\n");
@@ -87,8 +88,7 @@ static void read() {
         } else {
           read_buff = malloc(ctx.size);
         }
-        if (read(fd, read_buff, ctx.size) < 0 ||
-            (ctx.verify && memcmp(read_buff, ctx.data, ctx.size) != 0)) {
+        if (read(fd, read_buff, ctx.size) < 0 || (ctx.verify && memcmp(read_buff, ctx.data, ctx.size) != 0)) {
           printf("read file failed");
           exit(-1);
         }
@@ -103,8 +103,9 @@ static void read() {
   auto d = timespec_diff(time_start, time_end);
   long filesCnt = subdirs * files_per_dir;
   printf("[Read] read %ld files use %ld ms, ops is %s.\n",
-      filesCnt, (long)(d.tv_sec * 1000 + d.tv_nsec / 1000000.0),
-      std::to_string(filesCnt / ((double) d.tv_sec + d.tv_nsec / 1000000000.0)).c_str());
+         filesCnt,
+         (long)(d.tv_sec * 1000 + d.tv_nsec / 1000000.0),
+         std::to_string(filesCnt / ((double)d.tv_sec + d.tv_nsec / 1000000000.0)).c_str());
 }
 
 static void write() {
@@ -126,8 +127,9 @@ static void write() {
   auto d = timespec_diff(time_start, time_end);
   long filesCnt = subdirs * files_per_dir;
   printf("[Write] write %ld files use %ld ms, ops is %s.\n",
-      filesCnt, (long)(d.tv_sec * 1000 + d.tv_nsec / 1000000.0),
-      std::to_string(filesCnt / ((double) d.tv_sec + d.tv_nsec / 1000000000.0)).c_str());
+         filesCnt,
+         (long)(d.tv_sec * 1000 + d.tv_nsec / 1000000.0),
+         std::to_string(filesCnt / ((double)d.tv_sec + d.tv_nsec / 1000000000.0)).c_str());
 }
 
 static void stat() {
@@ -146,8 +148,9 @@ static void stat() {
   auto d = timespec_diff(time_start, time_end);
   long filesCnt = subdirs * files_per_dir;
   printf("[Stats] stats %ld files use %ld ms, ops is %s.\n",
-      filesCnt, (long)(d.tv_sec * 1000 + d.tv_nsec / 1000000.0),
-      std::to_string(filesCnt / ((double) d.tv_sec + d.tv_nsec / 1000000000.0)).c_str());
+         filesCnt,
+         (long)(d.tv_sec * 1000 + d.tv_nsec / 1000000.0),
+         std::to_string(filesCnt / ((double)d.tv_sec + d.tv_nsec / 1000000000.0)).c_str());
 }
 
 static void create() {
@@ -171,8 +174,9 @@ static void create() {
   auto d = timespec_diff(time_start, time_end);
   long files = subdirs * files_per_dir;
   printf("[Creation] create %ld inodes use %ld ms, ops is %s.\n",
-      files, (long)(d.tv_sec * 1000 + d.tv_nsec / 1000000.0),
-      std::to_string(files / ((double) d.tv_sec + d.tv_nsec / 1000000000.0)).c_str());
+         files,
+         (long)(d.tv_sec * 1000 + d.tv_nsec / 1000000.0),
+         std::to_string(files / ((double)d.tv_sec + d.tv_nsec / 1000000000.0)).c_str());
 }
 
 int main(int argc, char **argv) {

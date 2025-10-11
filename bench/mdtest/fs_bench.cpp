@@ -4,16 +4,16 @@
  */
 
 #include "core/FastFS.h"
-#include "spdk/stdinc.h"
-#include "spdk/thread.h"
 #include "spdk/bdev.h"
+#include "spdk/bdev_zone.h"
 #include "spdk/env.h"
 #include "spdk/event.h"
 #include "spdk/log.h"
+#include "spdk/stdinc.h"
 #include "spdk/string.h"
-#include "spdk/bdev_zone.h"
+#include "spdk/thread.h"
 
-static const char* bdevName = "Malloc0";
+static const char *bdevName = "Malloc0";
 static bool verify = false;
 static bool format = true;
 static bool direct = false;
@@ -24,7 +24,7 @@ static int subdirs = 1024;
 static int files_per_dir = 64;
 
 struct fs_bench_context {
-  struct spdk_poller* poller;
+  struct spdk_poller *poller;
   struct timespec time_start;
   std::string path;
   int subdir_index;
@@ -56,33 +56,35 @@ static void print_time_cost(int stage) {
   std::string msg;
   long counts = 0;
   switch (stage) {
-  case 0 :
+  case 0:
     msg = "[MKDIR] create %ld dirs use %ld ms, ops is %s.\n";
     counts = subdirs;
     break;
-  case 1 :
+  case 1:
     msg = "[Create] create %ld files use %ld ms, ops is %s.\n";
     counts = subdirs * files_per_dir;
     break;
-  case 2 :
+  case 2:
     msg = "[Stats] stats %ld files use %ld ms, ops is %s.\n";
     counts = subdirs * files_per_dir;
     break;
-  case 3 :
+  case 3:
     msg = "[Write] write %ld files use %ld ms, ops is %s.\n";
     counts = subdirs * files_per_dir;
     break;
-  case 4 :
+  case 4:
     msg = "[Read] read %ld files use %ld ms, ops is %s.\n";
     counts = subdirs * files_per_dir;
     break;
-  case 5 :
+  case 5:
     msg = "[Remove] delete %ld files use %ld ms, ops is %s.\n";
     counts = subdirs * files_per_dir;
     break;
   }
-  printf(msg.c_str(), counts, (long)(d.tv_sec * 1000 + d.tv_nsec / 1000000.0),
-      std::to_string(counts / ((double) d.tv_sec + d.tv_nsec / 1000000000.0)).c_str());
+  printf(msg.c_str(),
+         counts,
+         (long)(d.tv_sec * 1000 + d.tv_nsec / 1000000.0),
+         std::to_string(counts / ((double)d.tv_sec + d.tv_nsec / 1000000000.0)).c_str());
 }
 
 static void fsbench_usage(void) {
@@ -109,19 +111,19 @@ static int fsbench_parse_arg(int ch, char *arg) {
     format = false;
     break;
   case 'S':
-    extentSize = (int) std::stoi(arg);
+    extentSize = (int)std::stoi(arg);
     break;
   case 'P':
-    parallelism = (int) std::stoi(arg);
+    parallelism = (int)std::stoi(arg);
     break;
   case 'D':
     direct = true;
     break;
   case 'N':
-    subdirs = (int) std::stoi(arg);
+    subdirs = (int)std::stoi(arg);
     break;
   case 'F':
-    files_per_dir = (int) std::stoi(arg);
+    files_per_dir = (int)std::stoi(arg);
     break;
   case 'w':
     readWrite = true;
@@ -132,18 +134,18 @@ static int fsbench_parse_arg(int ch, char *arg) {
   return 0;
 }
 
-static void delete_complete(void* cb_args, int code) {
+static void delete_complete(void *cb_args, int code) {
   spdk_poller_unregister(&ctx.poller);
-  fs_op_context* opCtx = reinterpret_cast<fs_op_context*>(cb_args);
-  FastFS* fastfs = opCtx->fastfs;
+  fs_op_context *opCtx = reinterpret_cast<fs_op_context *>(cb_args);
+  FastFS *fastfs = opCtx->fastfs;
   fastfs->freeFsOp(opCtx);
   fastfs->unmount();
   spdk_app_stop(code);
 }
 
-static void delete_file_complete(void* cb_args, int code) {
-  fs_op_context* opCtx = reinterpret_cast<fs_op_context*>(cb_args);
-  FastFS* fastfs = opCtx->fastfs;
+static void delete_file_complete(void *cb_args, int code) {
+  fs_op_context *opCtx = reinterpret_cast<fs_op_context *>(cb_args);
+  FastFS *fastfs = opCtx->fastfs;
   fastfs->freeFsOp(opCtx);
   if (code != 0) {
     SPDK_ERRLOG("delete file failed: %d\n", code);
@@ -154,12 +156,12 @@ static void delete_file_complete(void* cb_args, int code) {
   ctx.inflights--;
 }
 
-static void delete_file(FastFS* fastfs) {
+static void delete_file(FastFS *fastfs) {
   ctx.path = "/mdtest/mdtest_tree." + std::to_string(ctx.subdir_index);
-  FastInode* parent = fastfs->status(ctx.path);
+  FastInode *parent = fastfs->status(ctx.path);
   ctx.path = "file." + std::to_string(ctx.subfile_index);
-  fs_op_context* opCtx = fastfs->allocFsOp();
-  DeleteContext* delCtx = new (opCtx->private_data) DeleteContext();
+  fs_op_context *opCtx = fastfs->allocFsOp();
+  DeleteContext *delCtx = new (opCtx->private_data) DeleteContext();
   delCtx->parentId = parent->ino_;
   delCtx->name = ctx.path.c_str();
   opCtx->callback = delete_file_complete;
@@ -168,10 +170,10 @@ static void delete_file(FastFS* fastfs) {
   ctx.subfile_index++;
 }
 
-static void read_file_complete(void* cb_args, int code) {
-  fs_op_context* opCtx = reinterpret_cast<fs_op_context*>(cb_args);
-  ReadContext* readCtx = reinterpret_cast<ReadContext*>(opCtx->private_data);
-  FastFS* fastfs = opCtx->fastfs;
+static void read_file_complete(void *cb_args, int code) {
+  fs_op_context *opCtx = reinterpret_cast<fs_op_context *>(cb_args);
+  ReadContext *readCtx = reinterpret_cast<ReadContext *>(opCtx->private_data);
+  FastFS *fastfs = opCtx->fastfs;
   if (verify) {
     if (direct) {
       readCtx->direct_buff->position(readCtx->direct_cursor);
@@ -195,13 +197,12 @@ static void read_file_complete(void* cb_args, int code) {
   ctx.inflights--;
 }
 
-static void read_file(FastFS* fastfs) {
-  ctx.path = "/mdtest/mdtest_tree." + std::to_string(ctx.subdir_index)
-      + "/file." + std::to_string(ctx.subfile_index);
+static void read_file(FastFS *fastfs) {
+  ctx.path = "/mdtest/mdtest_tree." + std::to_string(ctx.subdir_index) + "/file." + std::to_string(ctx.subfile_index);
   int fd = fastfs->open(ctx.path, O_RDONLY);
   if (readWrite) {
-    fs_op_context* opCtx = fastfs->allocFsOp();
-    ReadContext* readCtx = new (opCtx->private_data) ReadContext();
+    fs_op_context *opCtx = fastfs->allocFsOp();
+    ReadContext *readCtx = new (opCtx->private_data) ReadContext();
     if (direct) {
       readCtx->dirctRead(fastfs, fd, 0, ctx.size);
     } else {
@@ -221,10 +222,10 @@ static void read_file(FastFS* fastfs) {
   ctx.subfile_index++;
 }
 
-static void write_file_complete(void* cb_args, int code) {
-  fs_op_context* opCtx = reinterpret_cast<fs_op_context*>(cb_args);
-  WriteContext* writeCtx = reinterpret_cast<WriteContext*>(opCtx->private_data);
-  FastFS* fastfs = opCtx->fastfs;
+static void write_file_complete(void *cb_args, int code) {
+  fs_op_context *opCtx = reinterpret_cast<fs_op_context *>(cb_args);
+  WriteContext *writeCtx = reinterpret_cast<WriteContext *>(opCtx->private_data);
+  FastFS *fastfs = opCtx->fastfs;
   fastfs->close(writeCtx->fd);
   if (direct) {
     fastfs->freeBuffer(writeCtx->direct_buff);
@@ -239,13 +240,12 @@ static void write_file_complete(void* cb_args, int code) {
   ctx.inflights--;
 }
 
-static void write_file(FastFS* fastfs) {
-  ctx.path = "/mdtest/mdtest_tree." + std::to_string(ctx.subdir_index)
-      + "/file." + std::to_string(ctx.subfile_index);
+static void write_file(FastFS *fastfs) {
+  ctx.path = "/mdtest/mdtest_tree." + std::to_string(ctx.subdir_index) + "/file." + std::to_string(ctx.subfile_index);
   int fd = fastfs->open(ctx.path, O_RDWR); // F_MULTI_WRITE
   if (readWrite) {
-    fs_op_context* opCtx = fastfs->allocFsOp();
-    WriteContext* writeCtx = new (opCtx->private_data) WriteContext();
+    fs_op_context *opCtx = fastfs->allocFsOp();
+    WriteContext *writeCtx = new (opCtx->private_data) WriteContext();
     if (direct) {
       writeCtx->dirctWrite(fastfs, fd, 0, ctx.size, ctx.data);
     } else {
@@ -264,10 +264,9 @@ static void write_file(FastFS* fastfs) {
   ctx.subfile_index++;
 }
 
-static void stat_file(FastFS* fastfs) {
-  ctx.path = "/mdtest/mdtest_tree." + std::to_string(ctx.subdir_index)
-      + "/file." + std::to_string(ctx.subfile_index);
-  FastInode* inode = fastfs->status(ctx.path);
+static void stat_file(FastFS *fastfs) {
+  ctx.path = "/mdtest/mdtest_tree." + std::to_string(ctx.subdir_index) + "/file." + std::to_string(ctx.subfile_index);
+  FastInode *inode = fastfs->status(ctx.path);
   if (!inode) {
     SPDK_ERRLOG("stat file failed: %s\n", ctx.path.c_str());
     spdk_poller_unregister(&ctx.poller);
@@ -278,9 +277,9 @@ static void stat_file(FastFS* fastfs) {
   ctx.subfile_index++;
 }
 
-static void create_file_complete(void* cb_args, int code) {
-  fs_op_context* opCtx = reinterpret_cast<fs_op_context*>(cb_args);
-  FastFS* fastfs = opCtx->fastfs;
+static void create_file_complete(void *cb_args, int code) {
+  fs_op_context *opCtx = reinterpret_cast<fs_op_context *>(cb_args);
+  FastFS *fastfs = opCtx->fastfs;
   fastfs->freeFsOp(opCtx);
   if (code != 0) {
     SPDK_ERRLOG("create file failed: %d\n", code);
@@ -291,12 +290,12 @@ static void create_file_complete(void* cb_args, int code) {
   ctx.inflights--;
 }
 
-static void create_file(FastFS* fastfs) {
+static void create_file(FastFS *fastfs) {
   ctx.path = "/mdtest/mdtest_tree." + std::to_string(ctx.subdir_index);
-  FastInode* parent = fastfs->status(ctx.path);
+  FastInode *parent = fastfs->status(ctx.path);
   ctx.path = "file." + std::to_string(ctx.subfile_index);
-  fs_op_context* opCtx = fastfs->allocFsOp();
-  CreateContext* createCtx = new (opCtx->private_data) CreateContext();
+  fs_op_context *opCtx = fastfs->allocFsOp();
+  CreateContext *createCtx = new (opCtx->private_data) CreateContext();
   createCtx->parentId = parent->ino_;
   createCtx->name = ctx.path.c_str();
   createCtx->mode = 493;
@@ -307,9 +306,9 @@ static void create_file(FastFS* fastfs) {
   ctx.subfile_index++;
 }
 
-static void create_subdir_complete(void* cb_args, int code) {
-  fs_op_context* opCtx = reinterpret_cast<fs_op_context*>(cb_args);
-  FastFS* fastfs = opCtx->fastfs;
+static void create_subdir_complete(void *cb_args, int code) {
+  fs_op_context *opCtx = reinterpret_cast<fs_op_context *>(cb_args);
+  FastFS *fastfs = opCtx->fastfs;
   fastfs->freeFsOp(opCtx);
   if (code != 0) {
     SPDK_ERRLOG("create sub dir failed: %d\n", code);
@@ -320,12 +319,12 @@ static void create_subdir_complete(void* cb_args, int code) {
   ctx.inflights--;
 }
 
-static void create_subdir(FastFS* fastfs) {
+static void create_subdir(FastFS *fastfs) {
   ctx.path = "/mdtest";
-  FastInode* parent = fastfs->status(ctx.path);
+  FastInode *parent = fastfs->status(ctx.path);
   ctx.path = "mdtest_tree." + std::to_string(ctx.subdir_index);
-  fs_op_context* opCtx = fastfs->allocFsOp();
-  CreateContext* createCtx = new (opCtx->private_data) CreateContext();
+  fs_op_context *opCtx = fastfs->allocFsOp();
+  CreateContext *createCtx = new (opCtx->private_data) CreateContext();
   createCtx->parentId = parent->ino_;
   createCtx->name = ctx.path.c_str();
   createCtx->mode = 493;
@@ -369,72 +368,72 @@ static int do_bench(void *arg) {
   if (ctx.inflights >= parallelism) {
     return SPDK_POLLER_IDLE;
   }
-  FastFS* fastfs = reinterpret_cast<FastFS*>(arg);
+  FastFS *fastfs = reinterpret_cast<FastFS *>(arg);
   switch (ctx.stage) {
-    case 0 : { // mkdir
-      if (ctx.subdir_index == subdirs) {
-        ctx.wait = true;
-        return SPDK_POLLER_IDLE;
-      }
-      ctx.inflights++;
-      create_subdir(fastfs);
-      return SPDK_POLLER_BUSY;
+  case 0: { // mkdir
+    if (ctx.subdir_index == subdirs) {
+      ctx.wait = true;
+      return SPDK_POLLER_IDLE;
     }
-    case 1 : { // create
-      if (!advanceProgress()) {
-        return SPDK_POLLER_IDLE;
-      }
-      create_file(fastfs);
-      return SPDK_POLLER_BUSY;
+    ctx.inflights++;
+    create_subdir(fastfs);
+    return SPDK_POLLER_BUSY;
+  }
+  case 1: { // create
+    if (!advanceProgress()) {
+      return SPDK_POLLER_IDLE;
     }
-    case 2 : { // stats
-      if (!advanceProgress()) {
-        return SPDK_POLLER_IDLE;
-      }
-      stat_file(fastfs);
-      return SPDK_POLLER_BUSY;
+    create_file(fastfs);
+    return SPDK_POLLER_BUSY;
+  }
+  case 2: { // stats
+    if (!advanceProgress()) {
+      return SPDK_POLLER_IDLE;
     }
-    case 3 : { // write
-      if (!advanceProgress()) {
-        return SPDK_POLLER_IDLE;
-      }
-      write_file(fastfs);
-      return SPDK_POLLER_BUSY;
+    stat_file(fastfs);
+    return SPDK_POLLER_BUSY;
+  }
+  case 3: { // write
+    if (!advanceProgress()) {
+      return SPDK_POLLER_IDLE;
     }
-    case 4 : { // read
-      if (!advanceProgress()) {
-        return SPDK_POLLER_IDLE;
-      }
-      read_file(fastfs);
-      return SPDK_POLLER_BUSY;
+    write_file(fastfs);
+    return SPDK_POLLER_BUSY;
+  }
+  case 4: { // read
+    if (!advanceProgress()) {
+      return SPDK_POLLER_IDLE;
     }
-    case 5 : { // read
-      if (!advanceProgress()) {
-        return SPDK_POLLER_IDLE;
-      }
-      delete_file(fastfs);
-      return SPDK_POLLER_BUSY;
+    read_file(fastfs);
+    return SPDK_POLLER_BUSY;
+  }
+  case 5: { // read
+    if (!advanceProgress()) {
+      return SPDK_POLLER_IDLE;
     }
-    case 6 : { // remove test dir
-      ctx.path = "mdtest";
-      fs_op_context* opCtx = fastfs->allocFsOp();
-      DeleteContext* delCtx = new (opCtx->private_data) DeleteContext();
-      delCtx->parentId = 0;
-      delCtx->name = ctx.path.c_str();
-      delCtx->recursive = true;
-      opCtx->callback = delete_complete;
-      opCtx->cb_args = opCtx;
-      fastfs->remove(*opCtx);
-      ctx.stage++;
-      return SPDK_POLLER_BUSY;
-    }
+    delete_file(fastfs);
+    return SPDK_POLLER_BUSY;
+  }
+  case 6: { // remove test dir
+    ctx.path = "mdtest";
+    fs_op_context *opCtx = fastfs->allocFsOp();
+    DeleteContext *delCtx = new (opCtx->private_data) DeleteContext();
+    delCtx->parentId = 0;
+    delCtx->name = ctx.path.c_str();
+    delCtx->recursive = true;
+    opCtx->callback = delete_complete;
+    opCtx->cb_args = opCtx;
+    fastfs->remove(*opCtx);
+    ctx.stage++;
+    return SPDK_POLLER_BUSY;
+  }
   }
   return SPDK_POLLER_IDLE;
 }
 
-static void create_dir_complete(void* cb_args, int code) {
-  fs_op_context* opCtx = reinterpret_cast<fs_op_context*>(cb_args);
-  FastFS* fastfs = opCtx->fastfs;
+static void create_dir_complete(void *cb_args, int code) {
+  fs_op_context *opCtx = reinterpret_cast<fs_op_context *>(cb_args);
+  FastFS *fastfs = opCtx->fastfs;
   fastfs->freeFsOp(opCtx);
   if (code != 0) {
     SPDK_ERRLOG("create test dir failed: %d\n", code);
@@ -451,15 +450,14 @@ static void create_dir_complete(void* cb_args, int code) {
   ctx.poller = SPDK_POLLER_REGISTER(do_bench, fastfs, 0);
 }
 
-
-static void mount_complete(FastFS* fastfs, int code) {
+static void mount_complete(FastFS *fastfs, int code) {
   if (code != 0) {
     SPDK_ERRLOG("mount fastfs failed: %d\n", code);
     return;
   }
   ctx.path = "mdtest";
-  fs_op_context* opCtx = fastfs->allocFsOp();
-  CreateContext* createCtx = new (opCtx->private_data) CreateContext();
+  fs_op_context *opCtx = fastfs->allocFsOp();
+  CreateContext *createCtx = new (opCtx->private_data) CreateContext();
   createCtx->parentId = 0; // root
   createCtx->name = ctx.path.c_str();
   createCtx->mode = 493;
@@ -470,7 +468,7 @@ static void mount_complete(FastFS* fastfs, int code) {
   fastfs->create(*opCtx);
 }
 
-static void format_complete(FastFS* fastfs, int code) {
+static void format_complete(FastFS *fastfs, int code) {
   if (code != 0) {
     SPDK_ERRLOG("format fastfs failed: %d\n", code);
     return;
@@ -479,23 +477,21 @@ static void format_complete(FastFS* fastfs, int code) {
   fastfs->mount(mount_complete);
 }
 
-static void fsbench_event_cb(enum spdk_bdev_event_type type, struct spdk_bdev *bdev,
-        void *event_ctx) {
+static void fsbench_event_cb(enum spdk_bdev_event_type type, struct spdk_bdev *bdev, void *event_ctx) {
   SPDK_NOTICELOG("Unsupported bdev event: type %d\n", type);
 }
 
 static void fsbench_start(void *arg) {
   SPDK_NOTICELOG("Successfully started the application\n");
-  FastFS* fastfs = (FastFS*) arg;
-  fs_context_t* fs_context = &FastFS::fs_context;
+  FastFS *fastfs = (FastFS *)arg;
+  fs_context_t *fs_context = &FastFS::fs_context;
 
   int rc = 0;
   fs_context->bdev = NULL;
   fs_context->bdev_desc = NULL;
 
   SPDK_NOTICELOG("Opening the bdev %s\n", fs_context->bdev_name);
-  rc = spdk_bdev_open_ext(fs_context->bdev_name, true, fsbench_event_cb, NULL,
-        &fs_context->bdev_desc);
+  rc = spdk_bdev_open_ext(fs_context->bdev_name, true, fsbench_event_cb, NULL, &fs_context->bdev_desc);
   if (rc) {
     SPDK_ERRLOG("Could not open bdev: %s\n", fs_context->bdev_name);
     spdk_app_stop(-1);
@@ -522,8 +518,7 @@ static void fsbench_start(void *arg) {
 int main(int argc, char **argv) {
   struct spdk_app_opts opts = {};
   spdk_app_opts_init(&opts, sizeof(opts));
-  int rc = spdk_app_parse_args(
-        argc, argv, &opts, "b:VMS:P:DN:F:w", NULL, fsbench_parse_arg, fsbench_usage);
+  int rc = spdk_app_parse_args(argc, argv, &opts, "b:VMS:P:DN:F:w", NULL, fsbench_parse_arg, fsbench_usage);
   if (rc != SPDK_APP_PARSE_ARGS_SUCCESS) {
     exit(rc);
   }

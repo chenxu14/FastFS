@@ -6,7 +6,7 @@
 #include "FastFS.h"
 #include "xxh3.h"
 
-void FastFile::open(uint32_t flags, FastInode* inode) {
+void FastFile::open(uint32_t flags, FastInode *inode) {
   this->flags_ = flags;
   this->inode_ = inode;
   this->tail_block = nullptr;
@@ -26,8 +26,7 @@ void FastFile::close() {
   }
 }
 
-void FastInode::create(uint32_t ino, uint32_t parentId,
-    std::string_view name, FileType type) {
+void FastInode::create(uint32_t ino, uint32_t parentId, std::string_view name, FileType type) {
   this->ino_ = ino;
   this->parentId_ = parentId;
   this->next_ = 0;
@@ -46,7 +45,7 @@ void FastInode::create(uint32_t ino, uint32_t parentId,
 void FastInode::unlink() {
   if (--refCnts_ == 0) {
     if (type_ == FASTFS_REGULAR_FILE) {
-      for (auto& extentId : *extents_) {
+      for (auto &extentId : *extents_) {
         if (extentId != UINT32_MAX) {
           FastFS::fs_context.allocator->release(extentId);
         }
@@ -55,7 +54,7 @@ void FastInode::unlink() {
 
       if (dirtyExtents) {
         // clear dirty extents
-        for (auto& [index, extentInfo] : *dirtyExtents) {
+        for (auto &[index, extentInfo] : *dirtyExtents) {
           if (extentInfo.first != UINT32_MAX) {
             FastFS::fs_context.allocator->release(extentInfo.first);
           }
@@ -71,7 +70,7 @@ void FastInode::unlink() {
   }
 }
 
-bool FastInode::getExtent(uint64_t offset, uint32_t& index, uint32_t& extentId) {
+bool FastInode::getExtent(uint64_t offset, uint32_t &index, uint32_t &extentId) {
   index = static_cast<uint32_t>(offset >> FastFS::fs_context.extentBits);
   if (index < extents_->size()) {
     extentId = (*extents_)[index];
@@ -87,10 +86,10 @@ uint32_t FastFS::hashSlot(uint32_t parentId, std::string_view name) const {
   return (h1 ^ (h2 << 1)) & fs_context.inodesMask;
 }
 
-FastInode* FastFS::lookup(uint32_t parentId, std::string_view name) const {
+FastInode *FastFS::lookup(uint32_t parentId, std::string_view name) const {
   uint32_t ino = (*slots)[hashSlot(parentId, name)];
   while (ino) {
-    FastInode& inode = (*inodes)[ino];
+    FastInode &inode = (*inodes)[ino];
     if ((parentId == inode.parentId_) && (name == inode.name_)) {
       return &inode;
     }
@@ -99,12 +98,11 @@ FastInode* FastFS::lookup(uint32_t parentId, std::string_view name) const {
   return nullptr;
 }
 
-bool FastFS::lookup(uint32_t parentId, std::string_view name,
-    uint32_t& pre, uint32_t& ino) const {
+bool FastFS::lookup(uint32_t parentId, std::string_view name, uint32_t &pre, uint32_t &ino) const {
   bool head = true;
   pre = hashSlot(parentId, name);
   uint32_t inodeId = (*slots)[pre];
-  FastInode* inode = nullptr;
+  FastInode *inode = nullptr;
   while (inodeId) {
     inode = &(*inodes)[inodeId];
     if ((parentId == inode->parentId_) && (name == inode->name_)) {
@@ -118,8 +116,8 @@ bool FastFS::lookup(uint32_t parentId, std::string_view name,
   return head;
 }
 
-FastInode* FastFS::status(const std::string& path) const {
-  FastInode* cusor = root;
+FastInode *FastFS::status(const std::string &path) const {
+  FastInode *cusor = root;
   size_t start = 1;
   size_t i = 1;
   for (; i < path.size(); i++) {
@@ -149,8 +147,8 @@ int FastFS::open(uint32_t ino, uint32_t flags) {
   return fd;
 }
 
-int FastFS::open(const std::string& path, uint32_t flags) {
-  FastInode* inode = status(path);
+int FastFS::open(const std::string &path, uint32_t flags) {
+  FastInode *inode = status(path);
   if (!inode) {
     return -1;
   }
@@ -176,7 +174,7 @@ int FastFS::close(uint32_t fd) {
 
 int64_t FastFS::seek(uint32_t fd, uint64_t offset, int whence) {
   if (fd < fs_context.maxFiles) {
-    FastFile& file = (*files)[fd];
+    FastFile &file = (*files)[fd];
     uint64_t pos = offset; // SEEK_SET
     if (whence == SEEK_CUR) {
       pos = file.pos_ + offset;
@@ -189,20 +187,20 @@ int64_t FastFS::seek(uint32_t fd, uint64_t offset, int whence) {
   return -1;
 }
 
-static void writeJournalComplete(void* cb_args, int code) {
-  fs_op_context* ctx = reinterpret_cast<fs_op_context*>(cb_args);
+static void writeJournalComplete(void *cb_args, int code) {
+  fs_op_context *ctx = reinterpret_cast<fs_op_context *>(cb_args);
   ctx->fastfs->journal->freeEditOp();
   ctx->callback(ctx->cb_args, code);
 }
 
-int FastFS::applyCreate(CreateContext* createCtx) {
+int FastFS::applyCreate(CreateContext *createCtx) {
   if (!fs_context.inodeAllocator->getFree()) {
     SPDK_WARNLOG("no free INode.\n");
     return -1;
   }
 
   uint32_t parentId = createCtx->parentId;
-  FastInode& parent = (*inodes)[parentId];
+  FastInode &parent = (*inodes)[parentId];
   if (parent.status_ != 1) {
     return -2; // parent not exist
   }
@@ -227,7 +225,7 @@ int FastFS::applyCreate(CreateContext* createCtx) {
     return -4; // no available inodes
   }
 
-  FastInode& target = (*inodes)[ino];
+  FastInode &target = (*inodes)[ino];
   target.create(ino, parentId, createCtx->name, createCtx->type);
   target.mode_ = createCtx->mode;
 
@@ -240,8 +238,8 @@ int FastFS::applyCreate(CreateContext* createCtx) {
   return 0;
 }
 
-void FastFS::create(fs_op_context& ctx) {
-  CreateContext* createCtx = reinterpret_cast<CreateContext*>(ctx.private_data);
+void FastFS::create(fs_op_context &ctx) {
+  CreateContext *createCtx = reinterpret_cast<CreateContext *>(ctx.private_data);
   int code = applyCreate(createCtx);
   if (code != 0) {
     return ctx.callback(ctx.cb_args, code);
@@ -250,7 +248,7 @@ void FastFS::create(fs_op_context& ctx) {
     return ctx.callback(ctx.cb_args, 0);
   }
 
-  EditOp* editOp = journal->allocEditOp();
+  EditOp *editOp = journal->allocEditOp();
   editOp->opctx = createCtx;
   editOp->type = 0;
   editOp->size = 14 + createCtx->name.size();
@@ -259,9 +257,9 @@ void FastFS::create(fs_op_context& ctx) {
   editOp->phrase = !editOp->phrase;
 }
 
-static void createPath(void* cb_args, int code) {
-  fs_op_context* ctx = reinterpret_cast<fs_op_context*>(cb_args);
-  CreateContext* createCtx = reinterpret_cast<CreateContext*>(ctx->private_data);
+static void createPath(void *cb_args, int code) {
+  fs_op_context *ctx = reinterpret_cast<fs_op_context *>(cb_args);
+  CreateContext *createCtx = reinterpret_cast<CreateContext *>(ctx->private_data);
   if (code != 0) {
     createCtx->callback(createCtx->args, code);
     ctx->fastfs->freeFsOp(ctx);
@@ -276,10 +274,9 @@ static void createPath(void* cb_args, int code) {
   size_t i = createCtx->pos;
   for (; i < createCtx->path.size(); i++) {
     if (createCtx->path[i] == kDelimiter) {
-      createCtx->name = std::string_view(
-          createCtx->path.data() + createCtx->pos, i - createCtx->pos);
+      createCtx->name = std::string_view(createCtx->path.data() + createCtx->pos, i - createCtx->pos);
       createCtx->pos = i + 1;
-      FastInode* inode = ctx->fastfs->lookup(createCtx->parentId, createCtx->name);
+      FastInode *inode = ctx->fastfs->lookup(createCtx->parentId, createCtx->name);
       if (!inode) {
         return ctx->fastfs->create(*ctx);
       } else {
@@ -288,10 +285,9 @@ static void createPath(void* cb_args, int code) {
     }
   }
   if (createCtx->pos != i) { // path not end with '/'
-    createCtx->name = std::string_view(
-        createCtx->path.data() + createCtx->pos, i - createCtx->pos);
+    createCtx->name = std::string_view(createCtx->path.data() + createCtx->pos, i - createCtx->pos);
     createCtx->pos = i; // make position reach end
-    FastInode* inode = ctx->fastfs->lookup(createCtx->parentId, createCtx->name);
+    FastInode *inode = ctx->fastfs->lookup(createCtx->parentId, createCtx->name);
     if (!inode) { // create last
       return ctx->fastfs->create(*ctx);
     }
@@ -300,9 +296,9 @@ static void createPath(void* cb_args, int code) {
   ctx->fastfs->freeFsOp(ctx);
 }
 
-void FastFS::createRecursive(const std::string& path, op_cb callback, void* args) {
-  fs_op_context* ctx = allocFsOp();
-  CreateContext* createCtx = new (ctx->private_data) CreateContext();
+void FastFS::createRecursive(const std::string &path, op_cb callback, void *args) {
+  fs_op_context *ctx = allocFsOp();
+  CreateContext *createCtx = new (ctx->private_data) CreateContext();
   createCtx->parentId = 0;
   createCtx->mode = 493;
   createCtx->type = FASTFS_DIR;
@@ -315,8 +311,8 @@ void FastFS::createRecursive(const std::string& path, op_cb callback, void* args
   return createPath(ctx, 0);
 }
 
-int FastFS::applyTruncate(TruncateContext* truncateCtx) {
-  FastInode& inode = (*inodes)[truncateCtx->ino];
+int FastFS::applyTruncate(TruncateContext *truncateCtx) {
+  FastInode &inode = (*inodes)[truncateCtx->ino];
   if (inode.status_ != 1) {
     return -1; // file not find
   }
@@ -342,9 +338,8 @@ int FastFS::applyTruncate(TruncateContext* truncateCtx) {
   return 0;
 }
 
-void FastFS::truncate(fs_op_context& ctx) {
-  TruncateContext* truncateCtx =
-      reinterpret_cast<TruncateContext*>(ctx.private_data);
+void FastFS::truncate(fs_op_context &ctx) {
+  TruncateContext *truncateCtx = reinterpret_cast<TruncateContext *>(ctx.private_data);
   int code = applyTruncate(truncateCtx);
   if (code != 0) {
     return ctx.callback(ctx.cb_args, code);
@@ -353,7 +348,7 @@ void FastFS::truncate(fs_op_context& ctx) {
     return ctx.callback(ctx.cb_args, 0);
   }
 
-  EditOp* editOp = journal->allocEditOp();
+  EditOp *editOp = journal->allocEditOp();
   editOp->opctx = ctx.private_data;
   editOp->type = 1;
   editOp->size = 12; /*ino(4) + size(8)*/
@@ -362,11 +357,11 @@ void FastFS::truncate(fs_op_context& ctx) {
   editOp->phrase = !editOp->phrase;
 }
 
-void FastFS::removeRecursive(FastInode* dir) {
+void FastFS::removeRecursive(FastInode *dir) {
   uint32_t pre = 0;
   uint32_t ino = 0;
-  for (auto& inodeId : *(dir->children_)) {
-    FastInode& inode = (*inodes)[inodeId];
+  for (auto &inodeId : *(dir->children_)) {
+    FastInode &inode = (*inodes)[inodeId];
     bool head = lookup(inode.parentId_, inode.name_, pre, ino);
     if (!ino) {
       SPDK_WARNLOG("inode lookup failed, this should not happen!\n");
@@ -380,25 +375,25 @@ void FastFS::removeRecursive(FastInode* dir) {
     inode.next_ = 0;
 
     switch (inode.type_) {
-      case FASTFS_REGULAR_FILE: {
-        inode.status_ = 2;
-        inode.unlink();
-        break;
-      }
-      case FASTFS_DIR: {
-        removeRecursive(&inode);
-        break;
-      }
-      default:
-        break;
+    case FASTFS_REGULAR_FILE: {
+      inode.status_ = 2;
+      inode.unlink();
+      break;
+    }
+    case FASTFS_DIR: {
+      removeRecursive(&inode);
+      break;
+    }
+    default:
+      break;
     }
   }
   dir->status_ = 2;
   dir->unlink();
 }
 
-int FastFS::applyRemove(DeleteContext* delCtx) {
-  FastInode& parent = (*inodes)[delCtx->parentId];
+int FastFS::applyRemove(DeleteContext *delCtx) {
+  FastInode &parent = (*inodes)[delCtx->parentId];
   if (parent.status_ != 1) {
     return -1; // parent not exist
   }
@@ -410,9 +405,8 @@ int FastFS::applyRemove(DeleteContext* delCtx) {
     return -2; // file not exist
   }
 
-  FastInode& target = (*inodes)[ino];
-  if (target.type_ == FASTFS_DIR && !delCtx->recursive
-      && target.children_->size() > 0) {
+  FastInode &target = (*inodes)[ino];
+  if (target.type_ == FASTFS_DIR && !delCtx->recursive && target.children_->size() > 0) {
     return -3; // dir not empty
   }
 
@@ -426,23 +420,23 @@ int FastFS::applyRemove(DeleteContext* delCtx) {
   target.next_ = 0;
 
   switch (target.type_) {
-    case FASTFS_REGULAR_FILE: {
-      target.status_ = 2/*delete*/;
-      target.unlink();
-      break;
-    }
-    case FASTFS_DIR: {
-      removeRecursive(&target);
-	  break;
-    }
-    default:
-	  break;
+  case FASTFS_REGULAR_FILE: {
+    target.status_ = 2 /*delete*/;
+    target.unlink();
+    break;
+  }
+  case FASTFS_DIR: {
+    removeRecursive(&target);
+    break;
+  }
+  default:
+    break;
   }
   return 0;
 }
 
-void FastFS::remove(fs_op_context& ctx) {
-  DeleteContext* delCtx = reinterpret_cast<DeleteContext*>(ctx.private_data);
+void FastFS::remove(fs_op_context &ctx) {
+  DeleteContext *delCtx = reinterpret_cast<DeleteContext *>(ctx.private_data);
   int code = applyRemove(delCtx);
   if (code != 0) {
     return ctx.callback(ctx.cb_args, code);
@@ -451,7 +445,7 @@ void FastFS::remove(fs_op_context& ctx) {
     return ctx.callback(ctx.cb_args, 0);
   }
 
-  EditOp* editOp = journal->allocEditOp();
+  EditOp *editOp = journal->allocEditOp();
   editOp->opctx = delCtx;
   editOp->type = 2;
   editOp->size = 6 + delCtx->name.size();
@@ -460,9 +454,9 @@ void FastFS::remove(fs_op_context& ctx) {
   editOp->phrase = !editOp->phrase;
 }
 
-int FastFS::applyRename(RenameContext* renameCtx) {
-  FastInode& parentOld = (*inodes)[renameCtx->olddir];
-  FastInode& parentNew = (*inodes)[renameCtx->newdir];
+int FastFS::applyRename(RenameContext *renameCtx) {
+  FastInode &parentOld = (*inodes)[renameCtx->olddir];
+  FastInode &parentNew = (*inodes)[renameCtx->newdir];
   if (parentOld.status_ != 1 || parentNew.status_ != 1) {
     return -1;
   }
@@ -477,8 +471,8 @@ int FastFS::applyRename(RenameContext* renameCtx) {
   uint32_t tgtPre = 0;
   uint32_t tgtIno = 0;
   bool tgtHead = lookup(renameCtx->newdir, renameCtx->newname, tgtPre, tgtIno);
-  FastInode& source = (*inodes)[srcIno];
-  FastInode& target = (*inodes)[tgtIno];
+  FastInode &source = (*inodes)[srcIno];
+  FastInode &target = (*inodes)[tgtIno];
   if (tgtIno && (target.type_ != source.type_)) {
     return -3;
   }
@@ -517,8 +511,8 @@ int FastFS::applyRename(RenameContext* renameCtx) {
   return 0;
 }
 
-void FastFS::rename(fs_op_context& ctx) {
-  RenameContext* renameCtx = reinterpret_cast<RenameContext*>(ctx.private_data);
+void FastFS::rename(fs_op_context &ctx) {
+  RenameContext *renameCtx = reinterpret_cast<RenameContext *>(ctx.private_data);
   int code = applyRename(renameCtx);
   if (code != 0) {
     return ctx.callback(ctx.cb_args, code);
@@ -530,7 +524,7 @@ void FastFS::rename(fs_op_context& ctx) {
   int32_t size = 10; /*olddir(4) + newdir(4) + oldnameLen(1) + newnameLen(1)*/
   size += renameCtx->oldname.size();
   size += renameCtx->newname.size();
-  EditOp* editOp = journal->allocEditOp();
+  EditOp *editOp = journal->allocEditOp();
   editOp->opctx = renameCtx;
   editOp->type = 5;
   editOp->size = size;

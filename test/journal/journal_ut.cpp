@@ -4,59 +4,51 @@
  */
 
 extern "C" {
-#include <CUnit/CUnit.h>
 #include <CUnit/Basic.h>
-#include "spdk_internal/mock.h"
+#include <CUnit/CUnit.h>
+
 #include "rte_mempool.h"
+#include "spdk_internal/mock.h"
 }
 #include "core/FastFS.h"
 
-size_t spdk_bdev_get_buf_align(const struct spdk_bdev *bdev) {
-  return 1;
-}
-struct rte_mempool * rte_mempool_create(
-    const char *name, unsigned n, unsigned elt_size, unsigned cache_size,
-    unsigned private_data_size, rte_mempool_ctor_t *mp_init, void *mp_init_arg,
-    rte_mempool_obj_cb_t *obj_init, void *obj_init_arg, int socket_id, unsigned flags) {
+size_t spdk_bdev_get_buf_align(const struct spdk_bdev *bdev) { return 1; }
+struct rte_mempool *rte_mempool_create(const char *name,
+                                       unsigned n,
+                                       unsigned elt_size,
+                                       unsigned cache_size,
+                                       unsigned private_data_size,
+                                       rte_mempool_ctor_t *mp_init,
+                                       void *mp_init_arg,
+                                       rte_mempool_obj_cb_t *obj_init,
+                                       void *obj_init_arg,
+                                       int socket_id,
+                                       unsigned flags) {
   return nullptr;
 }
-void* spdk_mempool_get(struct spdk_mempool *mp) {
-  return malloc(sizeof(FastInode));
-}
-void spdk_mempool_put(struct spdk_mempool *mp, void *ele) {
-  free(ele);
-}
-void *spdk_malloc(size_t size, size_t align, uint64_t *unused, int numa_id, uint32_t flags) {
-  return malloc(size);
-}
-void spdk_free(void *buf) {
-  free(buf);
-}
-void* spdk_realloc(void *buf, size_t size, size_t align) {
-  return realloc(buf, size);
-}
-void* spdk_dma_zmalloc_socket(
-    size_t size, size_t align, uint64_t *unused, int numa_id) {
-  return malloc(size);
-}
-void spdk_dma_free(void *buf) {
-  free(buf);
-}
-struct spdk_poller* spdk_poller_register_named(
-    spdk_poller_fn fn, void *arg, uint64_t period, const char *name) {
+void *spdk_mempool_get(struct spdk_mempool *mp) { return malloc(sizeof(FastInode)); }
+void spdk_mempool_put(struct spdk_mempool *mp, void *ele) { free(ele); }
+void *spdk_malloc(size_t size, size_t align, uint64_t *unused, int numa_id, uint32_t flags) { return malloc(size); }
+void spdk_free(void *buf) { free(buf); }
+void *spdk_realloc(void *buf, size_t size, size_t align) { return realloc(buf, size); }
+void *spdk_dma_zmalloc_socket(size_t size, size_t align, uint64_t *unused, int numa_id) { return malloc(size); }
+void spdk_dma_free(void *buf) { free(buf); }
+struct spdk_poller *spdk_poller_register_named(spdk_poller_fn fn, void *arg, uint64_t period, const char *name) {
   return nullptr;
 }
-int spdk_bdev_write(
-    struct spdk_bdev_desc *desc, struct spdk_io_channel *ch,
-    void *buf, uint64_t offset, uint64_t nbytes,
-    spdk_bdev_io_completion_cb cb, void *cb_arg) {
-  FastJournal* journal = reinterpret_cast<FastJournal*>(cb_arg);
+int spdk_bdev_write(struct spdk_bdev_desc *desc,
+                    struct spdk_io_channel *ch,
+                    void *buf,
+                    uint64_t offset,
+                    uint64_t nbytes,
+                    spdk_bdev_io_completion_cb cb,
+                    void *cb_arg) {
+  FastJournal *journal = reinterpret_cast<FastJournal *>(cb_arg);
   journal->writeComplete(0);
   return 0;
 }
 
-static void init_fs_context(
-    fs_context_t& ctx, uint32_t blockSize, uint32_t extentSize, uint32_t blocks) {
+static void init_fs_context(fs_context_t &ctx, uint32_t blockSize, uint32_t extentSize, uint32_t blocks) {
   ctx.blockSize = blockSize;
   ctx.extentSize = extentSize;
   ctx.bufAlign = 1;
@@ -64,8 +56,8 @@ static void init_fs_context(
   ctx.superBlock.epoch = 0;
 }
 
-static void recordCreate(ByteBuffer* buffer, EditOp& editOp, uint32_t& num_ops,
-    FileType type, uint32_t pid, const std::string& name) {
+static void recordCreate(
+  ByteBuffer *buffer, EditOp &editOp, uint32_t &num_ops, FileType type, uint32_t pid, const std::string &name) {
   CreateContext createCtx;
   createCtx.parentId = pid;
   createCtx.name = name;
@@ -77,8 +69,7 @@ static void recordCreate(ByteBuffer* buffer, EditOp& editOp, uint32_t& num_ops,
   createCtx.serialize(buffer);
 }
 
-static void recordTruncate(ByteBuffer* buffer, EditOp& editOp,
-    uint32_t& num_ops, uint32_t ino, uint64_t file_size) {
+static void recordTruncate(ByteBuffer *buffer, EditOp &editOp, uint32_t &num_ops, uint32_t ino, uint64_t file_size) {
   TruncateContext truncateCtx;
   truncateCtx.ino = ino;
   truncateCtx.size = file_size;
@@ -88,8 +79,7 @@ static void recordTruncate(ByteBuffer* buffer, EditOp& editOp,
   truncateCtx.serialize(buffer);
 }
 
-static void recordDelete(ByteBuffer* buffer, EditOp& editOp,
-    uint32_t& num_ops, uint32_t pid, const std::string& name) {
+static void recordDelete(ByteBuffer *buffer, EditOp &editOp, uint32_t &num_ops, uint32_t pid, const std::string &name) {
   DeleteContext deleteCtx;
   deleteCtx.parentId = pid;
   deleteCtx.name = name;
@@ -100,9 +90,13 @@ static void recordDelete(ByteBuffer* buffer, EditOp& editOp,
   deleteCtx.serialize(buffer);
 }
 
-static void recordRename(ByteBuffer* buffer, EditOp& editOp, uint32_t& num_ops,
-    uint32_t olddir, uint32_t newdir,
-    const std::string& oldname, const std::string& newname) {
+static void recordRename(ByteBuffer *buffer,
+                         EditOp &editOp,
+                         uint32_t &num_ops,
+                         uint32_t olddir,
+                         uint32_t newdir,
+                         const std::string &oldname,
+                         const std::string &newname) {
   RenameContext renameCtx;
   renameCtx.olddir = olddir;
   renameCtx.newdir = newdir;
@@ -185,7 +179,7 @@ static void test_block_has_padding(void) {
   init_fs_context(fs_context, 4096, 8192, 10);
   FastJournal journal(fs_context);
   auto buffer = journal.tail_block;
-  EditOp* editOp = journal.allocEditOp();
+  EditOp *editOp = journal.allocEditOp();
   CU_ASSERT_PTR_NOT_NULL(editOp);
   uint32_t num_ops = 0;
   recordCreate(buffer, *editOp, num_ops, FASTFS_DIR, 0, "dir");
@@ -222,7 +216,7 @@ static void test_editop_alloc(void) {
   fs_context_t fs_context;
   init_fs_context(fs_context, 4096, 8192, 10);
   FastJournal journal(fs_context);
-  EditOp* editOp = nullptr;
+  EditOp *editOp = nullptr;
   uint32_t num = DEFAULT_POOL_SIZE - 1;
   for (uint32_t i = 0; i < num; i++) {
     editOp = journal.allocEditOp();
@@ -249,8 +243,8 @@ static void test_editop_alloc(void) {
   CU_ASSERT_PTR_NOT_NULL(editOp);
 }
 
-static void write_complete(void* cb_args, int code) {
-  FastJournal* journal = reinterpret_cast<FastJournal*>(cb_args);
+static void write_complete(void *cb_args, int code) {
+  FastJournal *journal = reinterpret_cast<FastJournal *>(cb_args);
   journal->freeEditOp();
 }
 
@@ -263,12 +257,12 @@ static void test_op_poller(void) {
   bool allocated = true;
   uint32_t num = DEFAULT_POOL_SIZE - 1;
   for (uint32_t i = 0; i < num; i++) {
-    EditOp* editOp = journal.allocEditOp();
+    EditOp *editOp = journal.allocEditOp();
     if (!editOp) {
       allocated = false;
       break;
     }
-    DeleteContext* deleteCtx = new DeleteContext();
+    DeleteContext *deleteCtx = new DeleteContext();
     deleteCtx->parentId = 0;
     deleteCtx->name = "dir";
     deleteCtx->recursive = false;
@@ -287,12 +281,12 @@ static void test_op_poller(void) {
   }
   // phrase bit revert case
   for (uint32_t i = 0; i < num; i++) {
-    EditOp* editOp = journal.allocEditOp();
+    EditOp *editOp = journal.allocEditOp();
     if (!editOp) {
       allocated = false;
       break;
     }
-    TruncateContext* truncateCtx = new TruncateContext();
+    TruncateContext *truncateCtx = new TruncateContext();
     truncateCtx->ino = i;
     truncateCtx->size = 1024;
     editOp->opctx = truncateCtx;
@@ -311,7 +305,7 @@ static void test_op_poller(void) {
 static void test_no_space(void) {
   uint32_t blockSize = 4096;
   fs_context_t fs_context;
-  init_fs_context(fs_context, blockSize, 8192, 4/*two extents*/);
+  init_fs_context(fs_context, blockSize, 8192, 4 /*two extents*/);
   FastJournal journal(fs_context);
   auto buffer = journal.tail_block;
 
@@ -320,8 +314,8 @@ static void test_no_space(void) {
   // first extent is reserved
   CU_ASSERT(fs_context.allocator->getFree() == 0);
 
-  EditOp* editOp = journal.allocEditOp();
-  DeleteContext* deleteCtx = new DeleteContext();
+  EditOp *editOp = journal.allocEditOp();
+  DeleteContext *deleteCtx = new DeleteContext();
   deleteCtx->parentId = 0;
   deleteCtx->name = "file";
   deleteCtx->recursive = false;
@@ -364,7 +358,7 @@ static void test_release_extents(void) {
   extents.erase_after(cusor, extents.end());
   uint32_t target = 19;
   bool correct = true;
-  for (auto& extentId : extents) {
+  for (auto &extentId : extents) {
     if (extentId != target--) {
       correct = false;
     }
@@ -383,14 +377,12 @@ int main() {
     return CU_get_error();
   }
 
-  if (
-      CU_add_test(suite, "Poller", test_op_poller) == NULL ||
+  if (CU_add_test(suite, "Poller", test_op_poller) == NULL ||
       CU_add_test(suite, "log replay", test_log_replay) == NULL ||
       CU_add_test(suite, "EditOp alloc", test_editop_alloc) == NULL ||
       CU_add_test(suite, "no space left", test_no_space) == NULL ||
       CU_add_test(suite, "release extents", test_release_extents) == NULL ||
-      CU_add_test(suite, "block has padding", test_block_has_padding) == NULL
-  ) {
+      CU_add_test(suite, "block has padding", test_block_has_padding) == NULL) {
     CU_cleanup_registry();
     return CU_get_error();
   }

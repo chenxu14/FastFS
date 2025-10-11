@@ -7,16 +7,14 @@
 
 fs_context_t FastFS::fs_context;
 
-FastFS::FastFS(const char* bdev) {
-  fs_context.bdev_name = bdev;
-}
+FastFS::FastFS(const char *bdev) { fs_context.bdev_name = bdev; }
 
-void FSyncContext::serialize(ByteBuffer* buf) {
+void FSyncContext::serialize(ByteBuffer *buf) {
   buf->write<uint32_t>(file->inode_->ino_);
   buf->write<uint64_t>(file->inode_->size_);
   if (dirtyExtents) {
     buf->write<uint16_t>(dirtyExtents->size());
-    for (auto& [index, extentInfo] : *dirtyExtents) {
+    for (auto &[index, extentInfo] : *dirtyExtents) {
       buf->write<uint32_t>(index);
       buf->write<uint32_t>(extentInfo.second);
     }
@@ -25,29 +23,28 @@ void FSyncContext::serialize(ByteBuffer* buf) {
   }
 }
 
-static void writeSuperBlockComplete(
-    struct spdk_bdev_io* bdev_io, bool success, void *cb_arg) {
+static void writeSuperBlockComplete(struct spdk_bdev_io *bdev_io, bool success, void *cb_arg) {
   if (bdev_io) {
     spdk_bdev_free_io(bdev_io);
   }
-  ByteBuffer* buffer = reinterpret_cast<ByteBuffer*>(cb_arg);
-  FastFS* fastfs = reinterpret_cast<FastFS*>(buffer->private_data);
-  auto& fs_context = FastFS::fs_context;
+  ByteBuffer *buffer = reinterpret_cast<ByteBuffer *>(cb_arg);
+  FastFS *fastfs = reinterpret_cast<FastFS *>(buffer->private_data);
+  auto &fs_context = FastFS::fs_context;
   spdk_dma_free(buffer->p_buffer_);
   delete buffer;
   SPDK_NOTICELOG("format FastFS successfully, current epoch %d, extentSize %d\n",
-      fs_context.superBlock.epoch, fs_context.superBlock.extentSize);
+                 fs_context.superBlock.epoch,
+                 fs_context.superBlock.extentSize);
   fs_context.callback(fastfs, success ? 0 : -1);
 }
 
-static void writeSuperBlock(
-    struct spdk_bdev_io* bdev_io, bool success, void *cb_arg) {
+static void writeSuperBlock(struct spdk_bdev_io *bdev_io, bool success, void *cb_arg) {
   if (bdev_io) {
     spdk_bdev_free_io(bdev_io);
   }
 
-  ByteBuffer* buffer = reinterpret_cast<ByteBuffer*>(cb_arg);
-  fs_context_t& ctx = FastFS::fs_context;
+  ByteBuffer *buffer = reinterpret_cast<ByteBuffer *>(cb_arg);
+  fs_context_t &ctx = FastFS::fs_context;
   if (success && ctx.superBlock.deserialize(buffer)) {
     ctx.superBlock.epoch += 1;
   } else {
@@ -64,8 +61,8 @@ static void writeSuperBlock(
   ctx.superBlock.version = 0;
   buffer->clear();
   ctx.superBlock.serialize(buffer);
-  spdk_bdev_write(ctx.bdev_desc, ctx.bdev_io_channel,
-      buffer->p_buffer_, 0, ctx.blockSize, writeSuperBlockComplete, buffer);
+  spdk_bdev_write(
+    ctx.bdev_desc, ctx.bdev_io_channel, buffer->p_buffer_, 0, ctx.blockSize, writeSuperBlockComplete, buffer);
 }
 
 void FastFS::format(uint32_t extentSize, fs_cb callback, bool skipJournal) {
@@ -84,22 +81,25 @@ void FastFS::format(uint32_t extentSize, fs_cb callback, bool skipJournal) {
   fs_context.localCore = spdk_env_get_current_core();
   fs_context.localNuma = spdk_env_get_numa_id(fs_context.localCore);
 
-  char* addr = (char*) spdk_dma_zmalloc_socket(
-      fs_context.blockSize, fs_context.bufAlign, NULL, fs_context.localNuma);
-  ByteBuffer* buffer = new ByteBuffer(addr, fs_context.blockSize);
+  char *addr = (char *)spdk_dma_zmalloc_socket(fs_context.blockSize, fs_context.bufAlign, NULL, fs_context.localNuma);
+  ByteBuffer *buffer = new ByteBuffer(addr, fs_context.blockSize);
   buffer->private_data = this;
-  spdk_bdev_read(fs_context.bdev_desc, fs_context.bdev_io_channel,
-      buffer->p_buffer_, 0, fs_context.blockSize, writeSuperBlock, buffer);
+  spdk_bdev_read(fs_context.bdev_desc,
+                 fs_context.bdev_io_channel,
+                 buffer->p_buffer_,
+                 0,
+                 fs_context.blockSize,
+                 writeSuperBlock,
+                 buffer);
 }
 
-static void loadCheckpoint(
-    struct spdk_bdev_io* bdev_io, bool success, void *cb_arg) {
+static void loadCheckpoint(struct spdk_bdev_io *bdev_io, bool success, void *cb_arg) {
   if (bdev_io) {
     spdk_bdev_free_io(bdev_io);
   }
-  ByteBuffer* buffer = reinterpret_cast<ByteBuffer*>(cb_arg);
-  FastFS* fastfs = reinterpret_cast<FastFS*>(buffer->private_data);
-  fs_context_t& ctx = FastFS::fs_context;
+  ByteBuffer *buffer = reinterpret_cast<ByteBuffer *>(cb_arg);
+  FastFS *fastfs = reinterpret_cast<FastFS *>(buffer->private_data);
+  fs_context_t &ctx = FastFS::fs_context;
   success = success && ctx.superBlock.deserialize(buffer);
   spdk_dma_free(buffer->p_buffer_);
   delete buffer;
@@ -142,40 +142,42 @@ void FastFS::mount(fs_cb callback, uint32_t maxInodes, uint32_t maxFiles) {
   fs_context.fdAllocator->reserve(0); // stdin
   fs_context.fdAllocator->reserve(1); // stdout
   fs_context.fdAllocator->reserve(2); // stderr
-  files = new FileCache(
-      fs_context.maxFiles, MemAllocator<FastFile>(fs_context.localNuma, 64));
+  files = new FileCache(fs_context.maxFiles, MemAllocator<FastFile>(fs_context.localNuma, 64));
   fs_context.inodeAllocator = new BitsAllocator(fs_context.maxInodes);
   fs_context.inodeAllocator->reserve(0); // root
-  slots = new HashSlots(
-      fs_context.inodesMask + 1, MemAllocator<uint32_t>(fs_context.localNuma, 64));
-  inodes = new INodeCache(
-      fs_context.maxInodes, MemAllocator<FastInode>(fs_context.localNuma, 64));
+  slots = new HashSlots(fs_context.inodesMask + 1, MemAllocator<uint32_t>(fs_context.localNuma, 64));
+  inodes = new INodeCache(fs_context.maxInodes, MemAllocator<FastInode>(fs_context.localNuma, 64));
   root = &(*inodes)[0];
   root->create(0, 0, "root", FASTFS_DIR);
 
   // read super block
-  char* addr = (char*) spdk_dma_zmalloc_socket(
-      fs_context.blockSize, fs_context.bufAlign, NULL, fs_context.localNuma);
-  ByteBuffer* buffer = new ByteBuffer(addr, fs_context.blockSize);
+  char *addr = (char *)spdk_dma_zmalloc_socket(fs_context.blockSize, fs_context.bufAlign, NULL, fs_context.localNuma);
+  ByteBuffer *buffer = new ByteBuffer(addr, fs_context.blockSize);
   buffer->private_data = this;
-  spdk_bdev_read(fs_context.bdev_desc, fs_context.bdev_io_channel,
-      buffer->p_buffer_, 0, fs_context.blockSize, loadCheckpoint, buffer);
+  spdk_bdev_read(fs_context.bdev_desc,
+                 fs_context.bdev_io_channel,
+                 buffer->p_buffer_,
+                 0,
+                 fs_context.blockSize,
+                 loadCheckpoint,
+                 buffer);
 }
 
 void FastFS::dumpInfo() {
   journal->dumpInfo();
   SPDK_NOTICELOG("inodes %d, free extents %d, first slot %d\n",
-      fs_context.inodeAllocator->getAllocated(),
-      fs_context.allocator->getFree(), fs_context.allocator->getLowestFreeIndex());
+                 fs_context.inodeAllocator->getAllocated(),
+                 fs_context.allocator->getFree(),
+                 fs_context.allocator->getLowestFreeIndex());
 }
 
 void FastFS::unmount() {
   dumpInfo();
 
-  for (auto& file : *files) {
+  for (auto &file : *files) {
     file.close();
   }
-  for (auto& inode : *inodes) {
+  for (auto &inode : *inodes) {
     inode.unlink();
   }
 
@@ -214,15 +216,14 @@ void FastFS::unmount() {
 }
 
 void FastFS::initObjPool(int poolSize) {
-  fs_ops = new std::vector<fs_op_context, MemAllocator<fs_op_context>>(
-      MemAllocator<fs_op_context>(fs_context.localNuma, 64));
-  buffers = new std::vector<ByteBuffer, MemAllocator<ByteBuffer>>(
-      MemAllocator<ByteBuffer>(fs_context.localNuma, 64));
+  fs_ops =
+    new std::vector<fs_op_context, MemAllocator<fs_op_context>>(MemAllocator<fs_op_context>(fs_context.localNuma, 64));
+  buffers = new std::vector<ByteBuffer, MemAllocator<ByteBuffer>>(MemAllocator<ByteBuffer>(fs_context.localNuma, 64));
   fs_ops->reserve(poolSize);
   buffers->reserve(poolSize);
   for (int i = 0; i < poolSize; i++) {
-    char* buffer = (char*) spdk_dma_zmalloc_socket(
-        fs_context.extentSize, fs_context.bufAlign, NULL, fs_context.localNuma);
+    char *buffer =
+      (char *)spdk_dma_zmalloc_socket(fs_context.extentSize, fs_context.bufAlign, NULL, fs_context.localNuma);
     buffers->emplace_back(buffer, fs_context.extentSize);
   }
   for (int i = 0; i < poolSize - 1; i++) {
@@ -237,36 +238,35 @@ void FastFS::initObjPool(int poolSize) {
   buf_head = &(*buffers)[0];
 }
 
-fs_op_context* FastFS::allocFsOp() {
-  fs_op_context* res = op_head;
+fs_op_context *FastFS::allocFsOp() {
+  fs_op_context *res = op_head;
   if (op_head) {
     op_head = op_head->next;
   }
   return res;
 }
 
-void FastFS::freeFsOp(fs_op_context* fs_op) {
+void FastFS::freeFsOp(fs_op_context *fs_op) {
   fs_op->next = op_head;
   op_head = fs_op;
 }
 
 // TODO chenxu14 consider NULL
-ByteBuffer* FastFS::allocBuffer() {
-  ByteBuffer* res = buf_head;
+ByteBuffer *FastFS::allocBuffer() {
+  ByteBuffer *res = buf_head;
   if (buf_head) {
     buf_head = buf_head->next;
   }
   return res;
 }
 
-ByteBuffer* FastFS::allocReadBuffer(uint64_t offset, uint32_t len) {
+ByteBuffer *FastFS::allocReadBuffer(uint64_t offset, uint32_t len) {
   uint64_t extentOffset = offset & fs_context.extentMask;
   uint64_t blockOffset = extentOffset & fs_context.blockMask;
   uint64_t startOffset = extentOffset - blockOffset;
-  uint64_t endOffset =
-      (extentOffset + len + fs_context.blockMask) & ~(fs_context.blockMask);
+  uint64_t endOffset = (extentOffset + len + fs_context.blockMask) & ~(fs_context.blockMask);
   uint32_t capacity = endOffset - startOffset;
-  ByteBuffer* buff = nullptr;
+  ByteBuffer *buff = nullptr;
   if (capacity <= fs_context.extentSize) {
     buff = allocBuffer();
   } else {
@@ -276,9 +276,8 @@ ByteBuffer* FastFS::allocReadBuffer(uint64_t offset, uint32_t len) {
   return buff;
 }
 
-ByteBuffer* FastFS::allocWriteBuffer(uint32_t len) {
-  uint32_t capacity =
-      ((len + fs_context.blockMask) & ~(fs_context.blockMask));
+ByteBuffer *FastFS::allocWriteBuffer(uint32_t len) {
+  uint32_t capacity = ((len + fs_context.blockMask) & ~(fs_context.blockMask));
   if (capacity <= fs_context.extentSize) {
     return allocBuffer();
   } else {
@@ -286,7 +285,7 @@ ByteBuffer* FastFS::allocWriteBuffer(uint32_t len) {
   }
 }
 
-void FastFS::freeBuffer(ByteBuffer* buffer) {
+void FastFS::freeBuffer(ByteBuffer *buffer) {
   if (buffer->alloc_) {
     delete buffer;
     return;

@@ -4,19 +4,14 @@
  */
 
 extern "C" {
-#include <CUnit/CUnit.h>
 #include <CUnit/Basic.h>
+#include <CUnit/CUnit.h>
 }
 #include "core/ByteBuffer.h"
 
-void* spdk_dma_zmalloc_socket(
-    size_t size, size_t align, uint64_t *unused, int numa_id) {
-  return malloc(size);
-}
+void *spdk_dma_zmalloc_socket(size_t size, size_t align, uint64_t *unused, int numa_id) { return malloc(size); }
 
-void spdk_dma_free(void *buf) {
-  free(buf);
-}
+void spdk_dma_free(void *buf) { free(buf); }
 
 static void test_base_operation(void) {
   ByteBuffer buffer(1024);
@@ -27,12 +22,12 @@ static void test_base_operation(void) {
   buffer.mark();
   CU_ASSERT(buffer.write<int64_t>(long_src));
 
-  ByteBuffer* dupBuf = buffer.duplicate();
-  CU_ASSERT(dupBuf->position() == size + 8/*int64_t*/);
+  ByteBuffer *dupBuf = buffer.duplicate();
+  CU_ASSERT(dupBuf->position() == size + 8 /*int64_t*/);
   CU_ASSERT(dupBuf->limit() == 1024);
   delete dupBuf;
 
-  ByteBuffer* sliceBuf = buffer.slice();
+  ByteBuffer *sliceBuf = buffer.slice();
   CU_ASSERT(dupBuf->position() == 0);
   CU_ASSERT(dupBuf->limit() == buffer.remaining());
   delete sliceBuf;
@@ -147,12 +142,10 @@ int main() {
     return CU_get_error();
   }
 
-  if (
-      CU_add_test(suite, "base operation", test_base_operation) == NULL ||
+  if (CU_add_test(suite, "base operation", test_base_operation) == NULL ||
       CU_add_test(suite, "buffer overflow", test_buffer_overflow) == NULL ||
       CU_add_test(suite, "random read write", test_random_rw) == NULL ||
-      CU_add_test(suite, "sequence read write", test_sequence_rw) == NULL
-  ) {
+      CU_add_test(suite, "sequence read write", test_sequence_rw) == NULL) {
     CU_cleanup_registry();
     return CU_get_error();
   }
