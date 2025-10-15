@@ -17,7 +17,7 @@
 #include "spdk/queue.h"
 #include "spdk/util.h"
 #include "spdk/rpc.h"
-#include "spdk_internal/event.h"
+#include "spdk/event.h"
 #include "fio.h"
 
 extern "C" {
@@ -187,7 +187,7 @@ static void format_complete(FastFS* fastfs, int code) {
 }
 
 static void fsbench_event_cb(
-    enum spdk_bdev_event_type type, struct spdk_bdev* bdev, void* ctx) {
+    enum spdk_bdev_event_type type, struct spdk_bdev*, void*) {
   printf("Unsupported bdev event: type %d\n", type);
 }
 
@@ -441,8 +441,8 @@ static enum fio_q_status fastfs_queue(struct thread_data *td, struct io_u *io_u)
   }
 }
 
-static int fastfs_getevents(struct thread_data *td, unsigned int min,
-    unsigned int max, const struct timespec *t) {
+static int fastfs_getevents(struct thread_data *td,
+    unsigned int, unsigned int, const struct timespec*) {
   struct fastfs_fio_thread* fio_thread =
       reinterpret_cast<struct fastfs_fio_thread*>(td->io_ops_data);
   while (fio_thread->count < fio_thread->reqs) {

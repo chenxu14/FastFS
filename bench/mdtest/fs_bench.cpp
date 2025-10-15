@@ -479,8 +479,8 @@ static void format_complete(FastFS* fastfs, int code) {
   fastfs->mount(mount_complete);
 }
 
-static void fsbench_event_cb(enum spdk_bdev_event_type type, struct spdk_bdev *bdev,
-        void *event_ctx) {
+static void fsbench_event_cb(
+    enum spdk_bdev_event_type type, struct spdk_bdev*, void*) {
   SPDK_NOTICELOG("Unsupported bdev event: type %d\n", type);
 }
 

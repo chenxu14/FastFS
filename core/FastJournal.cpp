@@ -217,7 +217,7 @@ static void replayNextExtent(
 }
 
 static void replayFirstExtent(
-    struct spdk_bdev_io* bdev_io, bool success, void *cb_arg) {
+    struct spdk_bdev_io* bdev_io, bool, void *cb_arg) {
   if (bdev_io) {
     spdk_bdev_free_io(bdev_io);
   }

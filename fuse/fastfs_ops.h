@@ -60,7 +60,7 @@ static void freeFuseOp(FuseOp* fuseOp) {
   op_head = fuseOp;
 }
 
-static void fastfs_init(void* userdata, struct fuse_conn_info* conn) {
+static void fastfs_init(void*, struct fuse_conn_info* conn) {
   conn->max_read = 0; // no limit
   // limit max_write to extentSize
   // in order to use FastFS::allocBuffer to allocate fuse_buf
@@ -86,7 +86,7 @@ static void fastfs_init(void* userdata, struct fuse_conn_info* conn) {
 }
 
 static void fastfs_getattr(
-    fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
+    fuse_req_t req, fuse_ino_t ino, struct fuse_file_info*) {
   FastInode& targetInode = (*fuseCtx->fastfs->inodes)[ino - 1];
   struct stat stbuf;
   memset(&stbuf, 0, sizeof(stbuf));
@@ -105,7 +105,7 @@ static void fastfs_getattr(
 }
 
 static void fastfs_setattr(fuse_req_t req, fuse_ino_t ino,
-    struct stat *attr, int to_set, struct fuse_file_info *fi) {
+    struct stat*, int, struct fuse_file_info* fi) {
   // TODO chenxu14 support chmod, time and truncate
   fastfs_getattr(req, ino, fi);
 }
@@ -251,7 +251,7 @@ static void rename_complete(void* cb_args, int code) {
 
 static void fastfs_rename(fuse_req_t req, fuse_ino_t olddir,
     const char *oldname, fuse_ino_t newdir,
-    const char *newname, unsigned int flags) {
+    const char *newname, unsigned int) {
   inflights++;
   FuseOp* fuseOp = allocFuseOp();
   fuseOp->req = req;
@@ -266,17 +266,17 @@ static void fastfs_rename(fuse_req_t req, fuse_ino_t olddir,
   fuseCtx->fastfs->rename(*fuseOp->opCtx);
 }
 
-static void fastfs_forget(fuse_req_t req, fuse_ino_t ino, uint64_t nlookup) {
+static void fastfs_forget(fuse_req_t req, fuse_ino_t, uint64_t) {
   fuse_reply_none(req);
 }
 
-static void fastfs_forgetmulti(fuse_req_t req, size_t count,
-    struct fuse_forget_data *forgets) {
+static void fastfs_forgetmulti(
+    fuse_req_t req, size_t, struct fuse_forget_data*) {
   fuse_reply_none(req);
 }
 
 static void fastfs_flush(
-    fuse_req_t req, fuse_ino_t fino, struct fuse_file_info *fi) {
+    fuse_req_t req, fuse_ino_t, struct fuse_file_info*) {
   fuse_reply_err(req, 0);
 }
 
@@ -292,7 +292,7 @@ static void fsync_complete(void* cb_args, int code) {
 }
 
 static void fastfs_fsync(
-    fuse_req_t req, fuse_ino_t fino, int datasync, struct fuse_file_info *fi) {
+    fuse_req_t req, fuse_ino_t, int, struct fuse_file_info* fi) {
   inflights++;
   FuseOp* fuseOp = allocFuseOp();
   fuseOp->req = req;
@@ -355,7 +355,7 @@ static void fastfs_open(
 }
 
 static void fastfs_release(
-    fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
+    fuse_req_t req, fuse_ino_t, struct fuse_file_info* fi) {
   uint32_t fd = static_cast<uint32_t>(fi->fh);
   int rc = fuseCtx->fastfs->close(fd);
   fuse_reply_err(req, rc < 0 ? ENOENT : 0);
@@ -375,7 +375,7 @@ static void fastfs_add_dentry(
 
 // TODO chenxu14 consider offset
 static void fastfs_readdir(fuse_req_t req, fuse_ino_t ino,
-    size_t size, off_t off, struct fuse_file_info *fi) {
+    size_t size, off_t off, struct fuse_file_info*) {
   FastInode& targetInode = (*fuseCtx->fastfs->inodes)[ino - 1];
   if (targetInode.type_ != FASTFS_DIR) {
     fuse_reply_err(req, ENOTDIR);
@@ -399,12 +399,12 @@ static void fastfs_readdir(fuse_req_t req, fuse_ino_t ino,
 }
 
 static void fastfs_releasedir(
-    fuse_req_t req, fuse_ino_t fino, struct fuse_file_info *fi) {
+    fuse_req_t req, fuse_ino_t, struct fuse_file_info*) {
   fuse_reply_err(req, 0);
 }
 
 static void fastfs_opendir(
-    fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
+    fuse_req_t req, fuse_ino_t, struct fuse_file_info* fi) {
   fuse_reply_open(req, fi);
 }
 
@@ -429,8 +429,8 @@ static void read_complete(void* cb_args, int code) {
   inflights--;
 }
 
-static void fastfs_read(fuse_req_t req, fuse_ino_t ino, size_t size,
-    off_t off, struct fuse_file_info *fi) {
+static void fastfs_read(fuse_req_t req, fuse_ino_t, size_t size,
+    off_t off, struct fuse_file_info* fi) {
   inflights++;
   FuseOp* fuseOp = allocFuseOp();
   fuseOp->buffer = fuseCtx->fastfs->allocReadBuffer(off, size);
@@ -462,8 +462,8 @@ static void write_complete(void* cb_args, int code) {
   inflights--;
 }
 
-static void fastfs_write(fuse_req_t req, fuse_ino_t ino,
-    struct fuse_bufvec *buf, off_t off, struct fuse_file_info *fi) {
+static void fastfs_write(fuse_req_t req, fuse_ino_t,
+    struct fuse_bufvec* buf, off_t off, struct fuse_file_info* fi) {
   inflights++;
   struct fuse_buf* flatbuf = &buf->buf[0];
   FuseOp* fuseOp = allocFuseOp();
@@ -485,22 +485,20 @@ static void fastfs_write(fuse_req_t req, fuse_ino_t ino,
 }
 
 static void fastfs_getxattr(
-    fuse_req_t req, fuse_ino_t ino, const char *name, size_t size) {
+    fuse_req_t req, fuse_ino_t, const char*, size_t) {
   fuse_reply_err(req, ENOTSUP);
 }
 
 static void fastfs_setxattr(
-    fuse_req_t req, fuse_ino_t ino, const char *name,
-    const char *value, size_t size, int flags) {
+    fuse_req_t req, fuse_ino_t, const char*, const char*, size_t, int) {
   fuse_reply_err(req, ENOTSUP);
 }
 
-static void fastfs_removexattr(
-    fuse_req_t req, fuse_ino_t ino, const char *name) {
+static void fastfs_removexattr(fuse_req_t req, fuse_ino_t, const char*) {
   fuse_reply_err(req, ENOTSUP);
 }
 
-static void fastfs_statfs(fuse_req_t req, fuse_ino_t fino) {
+static void fastfs_statfs(fuse_req_t req, fuse_ino_t) {
   auto& ctx = FastFS::fs_context;
   struct statvfs buf;
   memset(&buf, 0, sizeof(buf));
@@ -515,14 +513,13 @@ static void fastfs_statfs(fuse_req_t req, fuse_ino_t fino) {
   fuse_reply_statfs(req, &buf);
 }
 
-static void fastfs_ioctl(fuse_req_t req, fuse_ino_t fino, int cmd,
-    void *arg, struct fuse_file_info *fi, unsigned flags, const void *in_buf,
-    size_t in_bufsz, size_t out_bufsz) {
+static void fastfs_ioctl(fuse_req_t req, fuse_ino_t, int cmd, void*,
+    struct fuse_file_info* fi, unsigned flags, const void*,size_t, size_t) {
   if (flags & FUSE_IOCTL_COMPAT) {
     fuse_reply_err(req, ENOSYS);
     return;
   }
-  switch (cmd) {
+  switch ((uint64_t) cmd) {
     case FASTFS_IOCTL_GET_FD : {
       int32_t realFd = fi->fh;
       fuse_reply_ioctl(req, 0, &realFd, sizeof(int32_t));

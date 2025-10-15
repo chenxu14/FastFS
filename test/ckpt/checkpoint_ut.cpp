@@ -6,8 +6,6 @@
 extern "C" {
 #include <CUnit/CUnit.h>
 #include <CUnit/Basic.h>
-#include "spdk_internal/mock.h"
-#include "rte_mempool.h"
 }
 #include "core/FastFS.h"
 
@@ -27,48 +25,41 @@ static int READ_STAGE = 0;
 // format(0) -> ckptINodes(1) -> ckptDentry(2) -> writeSuperBlock(3)
 static int WRITE_STAGE = 0;
 
-size_t spdk_bdev_get_buf_align(const struct spdk_bdev *bdev) {
+size_t spdk_bdev_get_buf_align(const struct spdk_bdev*) {
   return 1;
 }
-struct rte_mempool * rte_mempool_create(
-    const char *name, unsigned n, unsigned elt_size, unsigned cache_size,
-    unsigned private_data_size, rte_mempool_ctor_t *mp_init, void *mp_init_arg,
-    rte_mempool_obj_cb_t *obj_init, void *obj_init_arg, int socket_id, unsigned flags) {
-  return nullptr;
-}
-void* spdk_mempool_get(struct spdk_mempool *mp) {
+void* spdk_mempool_get(struct spdk_mempool*) {
   return malloc(sizeof(FastInode));
 }
-void spdk_mempool_put(struct spdk_mempool *mp, void *ele) {
+void spdk_mempool_put(struct spdk_mempool*, void *ele) {
   free(ele);
 }
-void *spdk_malloc(size_t size, size_t align, uint64_t *unused, int numa_id, uint32_t flags) {
+void *spdk_malloc(size_t size, size_t, uint64_t*, int, uint32_t) {
   return malloc(size);
 }
 void spdk_free(void *buf) {
   free(buf);
 }
-void* spdk_realloc(void *buf, size_t size, size_t align) {
+void* spdk_realloc(void *buf, size_t size, size_t) {
   return realloc(buf, size);
 }
-void* spdk_dma_zmalloc_socket(
-    size_t size, size_t align, uint64_t *unused, int numa_id) {
+void* spdk_dma_zmalloc_socket(size_t size, size_t, uint64_t*, int) {
   return malloc(size);
 }
 void spdk_dma_free(void *buf) {
   free(buf);
 }
 struct spdk_poller* spdk_poller_register_named(
-    spdk_poller_fn fn, void *arg, uint64_t period, const char *name) {
+    spdk_poller_fn, void*, uint64_t, const char*) {
   return nullptr;
 }
-uint32_t spdk_bdev_get_write_unit_size(const struct spdk_bdev *bdev) {
+uint32_t spdk_bdev_get_write_unit_size(const struct spdk_bdev*) {
   return 1;
 }
-uint32_t spdk_bdev_get_block_size(const struct spdk_bdev *bdev) {
+uint32_t spdk_bdev_get_block_size(const struct spdk_bdev*) {
   return BLOCK_SIZE;
 }
-uint64_t spdk_bdev_get_num_blocks(const struct spdk_bdev *bdev) {
+uint64_t spdk_bdev_get_num_blocks(const struct spdk_bdev*) {
   return 5000;
 }
 
@@ -125,9 +116,8 @@ static void mockCreates(ByteBuffer* buffer, int start, int end) {
 }
 
 int spdk_bdev_read(
-    struct spdk_bdev_desc *desc, struct spdk_io_channel *ch,
-    void *buf, uint64_t offset, uint64_t nbytes,
-    spdk_bdev_io_completion_cb cb, void *cb_arg) {
+    struct spdk_bdev_desc*, struct spdk_io_channel*, void*,
+    uint64_t, uint64_t, spdk_bdev_io_completion_cb cb, void *cb_arg) {
   if (READ_STAGE == 0) { // format
     READ_STAGE++;
     cb(nullptr, false, cb_arg);
@@ -240,9 +230,8 @@ int spdk_bdev_read(
 }
 
 int spdk_bdev_write(
-    struct spdk_bdev_desc *desc, struct spdk_io_channel *ch,
-    void *buf, uint64_t offset, uint64_t nbytes,
-    spdk_bdev_io_completion_cb cb, void *cb_arg) {
+    struct spdk_bdev_desc*, struct spdk_io_channel*, void*,
+    uint64_t, uint64_t, spdk_bdev_io_completion_cb cb, void *cb_arg) {
   ByteBuffer* buffer = reinterpret_cast<ByteBuffer*>(cb_arg);
   FastFS* fastfs = reinterpret_cast<FastFS*>(buffer->private_data);
   fs_context_t& ctx = FastFS::fs_context;

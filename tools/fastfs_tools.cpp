@@ -50,7 +50,7 @@ static int tools_parse_arg(int ch, char *arg) {
   return 0;
 }
 
-static void operate_complete(FastFS* fastfs, int code) {
+static void operate_complete(FastFS*, int code) {
   if (code != 0) {
     SPDK_ERRLOG("operate failed: %d\n", code);
   } else {
@@ -66,8 +66,8 @@ static void operate_complete(FastFS* fastfs, int code) {
   spdk_app_stop(code);
 }
 
-static void tools_event_cb(enum spdk_bdev_event_type type, struct spdk_bdev *bdev,
-        void *event_ctx) {
+static void tools_event_cb(
+    enum spdk_bdev_event_type type, struct spdk_bdev*, void*) {
   SPDK_NOTICELOG("Unsupported bdev event: type %d\n", type);
 }
 
@@ -192,7 +192,7 @@ static void parseJournal(
 }
 
 static void parseDentry(
-    struct spdk_bdev_io* bdev_io, bool success, void *cb_arg) {
+    struct spdk_bdev_io* bdev_io, bool, void *cb_arg) {
   spdk_bdev_free_io(bdev_io);
   ByteBuffer* extentBuf = reinterpret_cast<ByteBuffer*>(cb_arg);
   fs_context_t& ctx = FastFS::fs_context;
@@ -249,7 +249,7 @@ static void parseDentry(
 }
 
 static void parseInodes(
-    struct spdk_bdev_io* bdev_io, bool success, void *cb_arg) {
+    struct spdk_bdev_io* bdev_io, bool, void *cb_arg) {
   spdk_bdev_free_io(bdev_io);
   ByteBuffer* extentBuf = reinterpret_cast<ByteBuffer*>(cb_arg);
   fs_context_t& ctx = FastFS::fs_context;

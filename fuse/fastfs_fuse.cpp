@@ -87,7 +87,7 @@ static void format_complete(FastFS* fastfs, int code) {
 }
 
 static void fuse_event_cb(
-    enum spdk_bdev_event_type type, struct spdk_bdev* bdev, void* ctx) {
+    enum spdk_bdev_event_type type, struct spdk_bdev*, void*) {
   printf("Unsupported bdev event: type %d\n", type);
 }
 

@@ -128,7 +128,7 @@ public:
     return static_cast<T*>(ptr);
   }
 
-  void deallocate(T* ptr, size_t n) noexcept {
+  void deallocate(T* ptr, size_t) noexcept {
     spdk_dma_free(ptr);
   }
 

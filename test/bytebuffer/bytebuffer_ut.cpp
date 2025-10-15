@@ -9,8 +9,7 @@ extern "C" {
 }
 #include "core/ByteBuffer.h"
 
-void* spdk_dma_zmalloc_socket(
-    size_t size, size_t align, uint64_t *unused, int numa_id) {
+void* spdk_dma_zmalloc_socket(size_t size, size_t, uint64_t*, int) {
   return malloc(size);
 }
 
@@ -33,8 +32,8 @@ static void test_base_operation(void) {
   delete dupBuf;
 
   ByteBuffer* sliceBuf = buffer.slice();
-  CU_ASSERT(dupBuf->position() == 0);
-  CU_ASSERT(dupBuf->limit() == buffer.remaining());
+  CU_ASSERT(sliceBuf->position() == 0);
+  CU_ASSERT(sliceBuf->limit() == buffer.remaining());
   delete sliceBuf;
 
   buffer.reset();
