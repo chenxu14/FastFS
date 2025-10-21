@@ -1,39 +1,36 @@
 #!/bin/bash
 
-# FIO 编译脚本
-# 用于在启用 FIO 插件时编译 FIO
-
 set -e
 
 FIO_DIR="${1}"
 BUILD_DIR="${2:-build}"
 
-echo "=== 编译 FIO ==="
-echo "FIO 目录: $FIO_DIR"
-echo "构建目录: $BUILD_DIR"
+echo "=== compile FIO ==="
+echo "FIO dir: $FIO_DIR"
+echo "build dir: $BUILD_DIR"
 
 if [ ! -d "$FIO_DIR" ]; then
-    echo "错误: FIO 目录 $FIO_DIR 不存在"
+    echo "Error: FIO directory $FIO_DIR does not exist"
     exit 1
 fi
 
-# 检查是否已经编译完成
+# Check if FIO is already compiled
 if [ -f "$FIO_DIR/fio" ]; then
-    echo "检测到 FIO 已经编译完成，跳过编译步骤"
+    echo "Detected that FIO is already compiled, skipping compilation step"
     exit 0
 fi
 
 cd "$FIO_DIR"
 
-# 配置 FIO
-echo "配置 FIO..."
+# Configure FIO
+echo "Configuring FIO..."
 ./configure
 
-# 编译 FIO
-echo "编译 FIO..."
-make -j16
+# Compile FIO
+echo "Compiling FIO..."
+make -j2
 
-# 返回项目根目录
+# Return to project root directory
 cd ..
 
-echo "=== FIO 编译完成 ==="
+echo "=== FIO compilation completed ==="

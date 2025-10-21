@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# SPDK 编译脚本
-# 用于在 CMake 配置中自动编译 SPDK submodule
+# SPDK build script
+# Used to automatically compile SPDK submodule in CMake configuration
 
 set -e
 
@@ -9,66 +9,66 @@ SPDK_DIR="${1:-third_party/spdk}"
 PATCH_FILE="${2:-spdk.patch}"
 BUILD_DIR="${3:-build}"
 
-echo "=== 编译 SPDK ==="
-echo "SPDK 目录: $SPDK_DIR"
-echo "补丁文件: $PATCH_FILE"
-echo "构建目录: $BUILD_DIR"
+echo "=== Building SPDK ==="
+echo "SPDK directory: $SPDK_DIR"
+echo "Patch file: $PATCH_FILE"
+echo "Build directory: $BUILD_DIR"
 
-# 检查 SPDK 目录
+# Check SPDK directory
 if [ ! -d "$SPDK_DIR" ]; then
-    echo "错误: SPDK 目录 $SPDK_DIR 不存在"
-    echo "请先运行: git submodule update --init"
+    echo "Error: SPDK directory $SPDK_DIR does not exist"
+    echo "Please run first: git submodule update --init"
     exit 1
 fi
 
-# 检查是否已经编译完成
+# Check if already compiled
 if [ -f "$SPDK_DIR/build/lib/libspdk_event.a" ] && [ -f "$SPDK_DIR/dpdk/build/lib/librte_eal.a" ]; then
-    echo "检测到 SPDK 已经编译完成，跳过编译步骤"
+    echo "Detected that SPDK is already compiled, skipping compilation step"
     exit 0
 fi
 
-# 应用补丁（如果存在）
+# Apply patch (if exists)
 if [ -f "$PATCH_FILE" ]; then
-    echo "应用补丁: $PATCH_FILE"
+    echo "Applying patch: $PATCH_FILE"
     cd "$SPDK_DIR"
     
-    # 检查补丁是否已经应用
-    if git apply --check "../../$PATCH_FILE" 2>/dev/null; then
-        # 补丁可以应用，说明尚未应用
-        echo "检测到补丁尚未应用，正在应用..."
-        if git apply "../../$PATCH_FILE"; then
-            echo "补丁应用成功"
+    # Check if patch is already applied
+    if git apply --check "$PATCH_FILE" 2>/dev/null; then
+        # Patch can be applied, meaning it hasn't been applied yet
+        echo "Detected that patch has not been applied yet, applying now..."
+        if git apply "$PATCH_FILE"; then
+            echo "Patch applied successfully"
         else
-            echo "错误: 补丁应用失败"
+            echo "Error: Patch application failed"
             exit 1
         fi
     else
-        # 检查是否已经应用了补丁（通过检查关键文件内容）
+        # Check if patch has already been applied (by checking key file content)
         if grep -q "struct spdk_bit_pool {" include/spdk/bit_pool.h 2>/dev/null; then
-            echo "检测到补丁已应用，跳过补丁应用步骤"
+            echo "Detected that patch has been applied, skipping patch application step"
         else
-            echo "警告: 补丁无法应用且未检测到已应用状态"
-            echo "可能的原因: SPDK 版本不兼容或文件已被修改"
-            echo "尝试继续编译..."
+            echo "Warning: Patch cannot be applied and no applied state detected"
+            echo "Possible reasons: SPDK version incompatible or files have been modified"
+            echo "Attempting to continue compilation..."
         fi
     fi
     cd ..
 else
-    echo "警告: 补丁文件 $PATCH_FILE 不存在，跳过补丁应用"
+    echo "Warning: Patch file $PATCH_FILE does not exist, skipping patch application"
 fi
 
-# 配置 SPDK
+# Configure SPDK
 cd "$SPDK_DIR"
 git submodule update --init
 ./scripts/pkgdep.sh
-echo "配置 SPDK..."
-./configure --disable-tests --disable-unit-tests --disable-apps --disable-examples
+echo "Configuring SPDK..."
+./configure --disable-tests --disable-unit-tests --disable-apps --disable-examples --with-shared
 
-# 编译 SPDK
-echo "编译 SPDK..."
-make -j16
+# Compile SPDK
+echo "Compiling SPDK..."
+make -j2
 
-# 返回项目根目录
+# Return to project root directory
 cd ..
 
-echo "=== SPDK 编译完成 ==="
+echo "=== SPDK compilation completed ==="

@@ -1,20 +1,20 @@
 #!/bin/bash
 
-# FastFS CMake 编译脚本
+# FastFS CMake build script
 
 set -e
 
-# 默认配置
+# Default configuration
 ENABLE_FIO_PLUGIN=0
 BUILD_SPDK=1
 BUILD_FIO=1
 FIO_VERSION="fio-3.39"
 
-# 解析命令行参数
+# Parse command line arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
-        --enable-fio-plugin)
-            ENABLE_FIO_PLUGIN=1
+        --enable-fio)
+            ENABLE_FIO=1
             shift
             ;;
         --disable-spdk-build)
@@ -44,23 +44,23 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# 检查 SPDK submodule (现在在 third_party/spdk)
+# Check SPDK submodule (now in third_party/spdk)
 if [ ! -d "third_party/spdk" ] || [ ! -f "third_party/spdk/mk/spdk.common.mk" ]; then
     echo "Error: SPDK submodule not found. Please run:"
     echo "  git submodule update --init"
     exit 1
 fi
 
-# 创建构建目录
+# Create build directory
 BUILD_DIR="build"
 mkdir -p "$BUILD_DIR"
 cd "$BUILD_DIR"
 
-# 构建 CMake 配置命令
+# Build CMake configuration command
 CMAKE_CMD="cmake .."
 
-if [[ $ENABLE_FIO_PLUGIN -eq 1 ]]; then
-    CMAKE_CMD+=" -DENABLE_FIO_PLUGIN=ON"
+if [[ $ENABLE_FIO -eq 1 ]]; then
+    CMAKE_CMD+=" -DENABLE_FIO=ON"
     CMAKE_CMD+=" -DFIO_VERSION=$FIO_VERSION"
 fi
 
@@ -80,14 +80,14 @@ if [[ -n "$DISABLE_TESTS" ]]; then
     CMAKE_CMD+=" -DENABLE_TESTS=OFF"
 fi
 
-# 运行 CMake 配置
+# Run CMake configuration
 echo "Running CMake configuration..."
 eval "$CMAKE_CMD"
 
-# 编译项目
+# Build project
 echo "Building FastFS..."
-make -j16
+make -j2
 
 echo "Build completed successfully!"
 echo "Binaries are located in: $BUILD_DIR/bin"
-echo "Libraries are located in: $BUILD_DIR/lib"
+echo "Libraries are located in: $BUILD_DIR/lib64"

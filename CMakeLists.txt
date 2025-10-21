@@ -1,82 +1,83 @@
 cmake_minimum_required(VERSION 3.16)
 project(FastFS VERSION 1.0 LANGUAGES CXX C)
 
-# 设置 C++ 标准
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# 查找 Threads 库
 find_package(Threads REQUIRED)
 
-# 设置输出目录
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib64)
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib64)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
-# 脚本目录
 set(SCRIPTS_DIR ${CMAKE_SOURCE_DIR}/scripts)
 
-# SPDK 作为 submodule 的路径 (现在在 third_party/spdk)
-set(SPDK_SUBMODULE_DIR ${CMAKE_SOURCE_DIR}/third_party/spdk)
-set(SPDK_BUILD_DIR ${SPDK_SUBMODULE_DIR}/build)
+# SPDK configuration
+if(NOT DEFINED SPDK_ROOT_DIR)
+    set(SPDK_ROOT_DIR ${CMAKE_SOURCE_DIR}/third_party/spdk)
+    set(SPDK_AUTO_DOWNLOAD ON)
+else()
+    set(SPDK_AUTO_DOWNLOAD OFF)
+endif()
+set(SPDK_BUILD_DIR ${SPDK_ROOT_DIR}/build)
 
-# deps 目录用于临时依赖
 set(DEPS_DIR ${CMAKE_SOURCE_DIR}/deps)
 
-# 编译选项
-option(ENABLE_FIO_PLUGIN "Enable FIO plugin support" ON)
+option(ENABLE_FIO "Enable FIO support" ON)
 set(FIO_VERSION "fio-3.39" CACHE STRING "FIO version to download")
 option(ENABLE_FUSE "Enable FUSE support" ON)
 option(ENABLE_TESTS "Enable unit tests" ON)
 option(BUILD_SPDK "Automatically build SPDK submodule" ON)
-option(BUILD_FIO "Automatically build FIO when plugin enabled" ON)
+option(BUILD_FIO "Automatically build FIO when enabled" ON)
 
-# 设置编译选项
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -O2")
 
-# 检查 SPDK submodule 是否存在
-if(NOT EXISTS ${SPDK_SUBMODULE_DIR}/mk/spdk.common.mk)
-    message(FATAL_ERROR "SPDK submodule not found at ${SPDK_SUBMODULE_DIR}. Please run: git submodule update --init")
+# SPDK setup and build logic
+if(SPDK_AUTO_DOWNLOAD)
+    if(NOT EXISTS ${SPDK_ROOT_DIR}/mk/spdk.common.mk)
+        message(FATAL_ERROR "SPDK submodule not found at ${SPDK_ROOT_DIR}. Please run: git submodule update --init")
+    endif()
 endif()
 
-# SPDK 自动编译逻辑
 if(BUILD_SPDK)
-    # 创建 SPDK 编译命令
-    set(SPDK_BUILD_COMMAND ${CMAKE_SOURCE_DIR}/scripts/build_spdk.sh ${SPDK_SUBMODULE_DIR} ${CMAKE_SOURCE_DIR}/spdk.patch)
+    set(SPDK_BUILD_COMMAND ${CMAKE_SOURCE_DIR}/scripts/build_spdk.sh ${SPDK_ROOT_DIR} ${CMAKE_SOURCE_DIR}/spdk.patch)
     
-    # 添加自定义目标来编译 SPDK
     add_custom_target(build_spdk
         COMMAND ${SPDK_BUILD_COMMAND}
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-        COMMENT "Building SPDK submodule"
+        COMMENT "Building SPDK"
     )
     
-    # 确保 SPDK 在使用前已编译
     set(SPDK_DEPENDENCY build_spdk)
 else()
     set(SPDK_DEPENDENCY "")
 endif()
 
-# FIO 下载和构建逻辑（仅在启用 FIO 插件时）
-if(ENABLE_FIO_PLUGIN)
-    include(FetchContent)
+# FIO configuration and build logic
+if(ENABLE_FIO)
+    if(NOT DEFINED FIO_ROOT_DIR)
+        include(FetchContent)
+        
+        FetchContent_Declare(
+            fio
+            URL https://github.com/axboe/fio/archive/refs/tags/${FIO_VERSION}.tar.gz
+            URL_HASH SHA256=e2f4ff137061b44ceb83a55eb9ca8856fe188db6d9b00cb59f8629c9162afe0a
+            DOWNLOAD_DIR ${DEPS_DIR}
+            SOURCE_DIR ${DEPS_DIR}/${FIO_VERSION}
+        )
+        
+        FetchContent_MakeAvailable(fio)
+        
+        set(FIO_ROOT_DIR ${DEPS_DIR}/${FIO_VERSION})
+        set(FIO_AUTO_DOWNLOAD ON)
+    else()
+        set(FIO_AUTO_DOWNLOAD OFF)
+    endif()
     
-    # 下载 FIO 到 deps 目录
-    FetchContent_Declare(
-        fio
-        URL https://github.com/axboe/fio/archive/refs/tags/${FIO_VERSION}.tar.gz
-        DOWNLOAD_DIR ${DEPS_DIR}
-        SOURCE_DIR ${DEPS_DIR}/${FIO_VERSION}
-    )
+    set(FIO_SRC_DIR ${FIO_ROOT_DIR})
+    set(FIO_BUILD_DIR ${FIO_ROOT_DIR})
     
-    FetchContent_MakeAvailable(fio)
-    
-    # 设置 FIO 源码路径
-    set(FIO_SRC_DIR ${DEPS_DIR}/${FIO_VERSION})
-    set(FIO_BUILD_DIR ${FIO_SRC_DIR})
-    
-    # FIO 自动编译逻辑
     if(BUILD_FIO)
         set(FIO_BUILD_COMMAND ${CMAKE_SOURCE_DIR}/scripts/build_fio.sh ${FIO_SRC_DIR})
         
@@ -92,22 +93,35 @@ if(ENABLE_FIO_PLUGIN)
     endif()
 endif()
 
-# 添加子目录
+# Core library (always built)
 add_subdirectory(core)
 add_subdirectory(tools)
-add_subdirectory(fuse)
-add_subdirectory(test)
+
+# Optional components with centralized condition checks
+if(ENABLE_FUSE)
+    add_subdirectory(fuse)
+endif()
+
+if(ENABLE_TESTS)
+    add_subdirectory(test)
+endif()
+
+# Bench directory (contains both general benchmarks and FIO plugin)
 add_subdirectory(bench)
 
-# 安装规则
 install(DIRECTORY ${CMAKE_SOURCE_DIR}/bench/ DESTINATION share/fastfs/bench
         FILES_MATCHING PATTERN "*.json")
 
 message(STATUS "FastFS configuration:")
-message(STATUS "  SPDK_SUBMODULE_DIR: ${SPDK_SUBMODULE_DIR}")
+message(STATUS "  SPDK_ROOT_DIR: ${SPDK_ROOT_DIR}")
+message(STATUS "  SPDK_AUTO_DOWNLOAD: ${SPDK_AUTO_DOWNLOAD}")
 message(STATUS "  DEPS_DIR: ${DEPS_DIR}")
 message(STATUS "  BUILD_SPDK: ${BUILD_SPDK}")
-message(STATUS "  ENABLE_FIO_PLUGIN: ${ENABLE_FIO_PLUGIN}")
+message(STATUS "  ENABLE_FIO: ${ENABLE_FIO}")
+if(ENABLE_FIO)
+    message(STATUS "  FIO_ROOT_DIR: ${FIO_ROOT_DIR}")
+    message(STATUS "  FIO_AUTO_DOWNLOAD: ${FIO_AUTO_DOWNLOAD}")
+endif()
 message(STATUS "  BUILD_FIO: ${BUILD_FIO}")
 message(STATUS "  ENABLE_FUSE: ${ENABLE_FUSE}")
 message(STATUS "  ENABLE_TESTS: ${ENABLE_TESTS}")

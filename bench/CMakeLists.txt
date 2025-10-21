@@ -1,3 +1,6 @@
 # Add benchmark subdirectories
-add_subdirectory(fio)
 add_subdirectory(mdtest)
+
+if(ENABLE_FIO)
+    add_subdirectory(fio)
+endif()
