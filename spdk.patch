@@ -1,5 +1,5 @@
 diff --git a/include/spdk/bit_pool.h b/include/spdk/bit_pool.h
-index 1a038a5..369b907 100644
+index 316c66aaa..e34034f90 100644
 --- a/include/spdk/bit_pool.h
 +++ b/include/spdk/bit_pool.h
 @@ -16,8 +16,12 @@
@@ -16,11 +16,24 @@ index 1a038a5..369b907 100644
  
  /**
   * Return the number of bits that a bit pool is currently sized to hold.
+diff --git a/lib/nvme/nvme_cuse.c b/lib/nvme/nvme_cuse.c
+index ea7e8d3e9..2abd61eaa 100644
+--- a/lib/nvme/nvme_cuse.c
++++ b/lib/nvme/nvme_cuse.c
+@@ -1241,7 +1241,7 @@ nvme_cuse_start(struct spdk_nvme_ctrlr *ctrlr)
+ 		 * fuse_log.h, so this is the easiest way to check for it
+ 		 * without adding a separate CONFIG flag.
+ 		 */
+-		fuse_set_log_func(nvme_fuse_log_func);
++		//fuse_set_log_func(nvme_fuse_log_func);
+ #endif
+ 	}
+ 
 diff --git a/lib/util/bit_array.c b/lib/util/bit_array.c
-index ec18249..21029fc 100644
+index ff51705b3..021db1b73 100644
 --- a/lib/util/bit_array.c
 +++ b/lib/util/bit_array.c
-@@ -335,12 +335,6 @@
+@@ -335,12 +335,6 @@ spdk_bit_array_clear_mask(struct spdk_bit_array *ba)
  	}
  }
  
@@ -33,3 +46,16 @@ index ec18249..21029fc 100644
  struct spdk_bit_pool *
  spdk_bit_pool_create(uint32_t num_bits)
  {
+diff --git a/scripts/pkgdep/rhel.sh b/scripts/pkgdep/rhel.sh
+index 55b9b183a..bcd029224 100755
+--- a/scripts/pkgdep/rhel.sh
++++ b/scripts/pkgdep/rhel.sh
+@@ -122,7 +122,7 @@ if [ "$(uname -m)" = "aarch64" ]; then
+ 	fi
+ fi
+ 
+-if echo "$ID $VERSION_ID" | grep -E -q 'centos 8|rhel 8|rocky 8'; then
++if echo "$ID $VERSION_ID" | grep -E -q 'centos 8|rhel 8|rocky 8 |alinux 3'; then
+ 	yum install -y python36 python36-devel
+ 	#Create hard link to use in SPDK as python
+ 	if [[ ! -e /usr/bin/python && -e /etc/alternatives/python3 ]]; then
