@@ -134,21 +134,19 @@ static int fsbench_parse_arg(int ch, char *arg) {
 
 static void delete_complete(void* cb_args, int code) {
   spdk_poller_unregister(&ctx.poller);
-  fs_op_context* opCtx = reinterpret_cast<fs_op_context*>(cb_args);
-  FastFS* fastfs = opCtx->fastfs;
-  fastfs->freeFsOp(opCtx);
-  fastfs->unmount();
+  DeleteContext* delCtx = reinterpret_cast<DeleteContext*>(cb_args);
+  FastFS::fs_context.fastfs->freeFsOp(delCtx);
+  FastFS::fs_context.fastfs->unmount();
   spdk_app_stop(code);
 }
 
 static void delete_file_complete(void* cb_args, int code) {
-  fs_op_context* opCtx = reinterpret_cast<fs_op_context*>(cb_args);
-  FastFS* fastfs = opCtx->fastfs;
-  fastfs->freeFsOp(opCtx);
+  DeleteContext* delCtx = reinterpret_cast<DeleteContext*>(cb_args);
+  FastFS::fs_context.fastfs->freeFsOp(delCtx);
   if (code != 0) {
     SPDK_ERRLOG("delete file failed: %d\n", code);
     spdk_poller_unregister(&ctx.poller);
-    fastfs->unmount();
+    FastFS::fs_context.fastfs->unmount();
     spdk_app_stop(-1);
   }
   ctx.inflights--;
@@ -163,15 +161,14 @@ static void delete_file(FastFS* fastfs) {
   delCtx->parentId = parent->ino_;
   delCtx->name = ctx.path.c_str();
   opCtx->callback = delete_file_complete;
-  opCtx->cb_args = opCtx;
+  opCtx->cb_args = delCtx;
   fastfs->remove(*opCtx);
   ctx.subfile_index++;
 }
 
 static void read_file_complete(void* cb_args, int code) {
-  fs_op_context* opCtx = reinterpret_cast<fs_op_context*>(cb_args);
-  ReadContext* readCtx = reinterpret_cast<ReadContext*>(opCtx->private_data);
-  FastFS* fastfs = opCtx->fastfs;
+  ReadContext* readCtx = reinterpret_cast<ReadContext*>(cb_args);
+  FastFS* fastfs = FastFS::fs_context.fastfs;
   if (verify) {
     if (direct) {
       readCtx->direct_buff->position(readCtx->direct_cursor);
@@ -185,7 +182,7 @@ static void read_file_complete(void* cb_args, int code) {
     delete readCtx->read_buff;
   }
   fastfs->close(readCtx->fd);
-  fastfs->freeFsOp(opCtx);
+  fastfs->freeFsOp(readCtx);
   if (code != 0) {
     SPDK_ERRLOG("read file failed: %d\n", code);
     spdk_poller_unregister(&ctx.poller);
@@ -212,7 +209,7 @@ static void read_file(FastFS* fastfs) {
       readCtx->read_buff = new char[ctx.size];
     }
     opCtx->callback = read_file_complete;
-    opCtx->cb_args = opCtx;
+    opCtx->cb_args = readCtx;
     fastfs->read(*opCtx);
   } else {
     fastfs->close(fd);
@@ -222,14 +219,13 @@ static void read_file(FastFS* fastfs) {
 }
 
 static void write_file_complete(void* cb_args, int code) {
-  fs_op_context* opCtx = reinterpret_cast<fs_op_context*>(cb_args);
-  WriteContext* writeCtx = reinterpret_cast<WriteContext*>(opCtx->private_data);
-  FastFS* fastfs = opCtx->fastfs;
+  WriteContext* writeCtx = reinterpret_cast<WriteContext*>(cb_args);
+  FastFS* fastfs = FastFS::fs_context.fastfs;
   fastfs->close(writeCtx->fd);
   if (direct) {
     fastfs->freeBuffer(writeCtx->direct_buff);
   }
-  fastfs->freeFsOp(opCtx);
+  fastfs->freeFsOp(writeCtx);
   if (code != 0) {
     SPDK_ERRLOG("write file failed: %d\n", code);
     spdk_poller_unregister(&ctx.poller);
@@ -255,7 +251,7 @@ static void write_file(FastFS* fastfs) {
       writeCtx->count = ctx.size;
     }
     opCtx->callback = write_file_complete;
-    opCtx->cb_args = opCtx;
+    opCtx->cb_args = writeCtx;
     fastfs->write(*opCtx);
   } else {
     fastfs->close(fd);
@@ -279,13 +275,12 @@ static void stat_file(FastFS* fastfs) {
 }
 
 static void create_file_complete(void* cb_args, int code) {
-  fs_op_context* opCtx = reinterpret_cast<fs_op_context*>(cb_args);
-  FastFS* fastfs = opCtx->fastfs;
-  fastfs->freeFsOp(opCtx);
+  CreateContext* createCtx = reinterpret_cast<CreateContext*>(cb_args);
+  FastFS::fs_context.fastfs->freeFsOp(createCtx);
   if (code != 0) {
     SPDK_ERRLOG("create file failed: %d\n", code);
     spdk_poller_unregister(&ctx.poller);
-    fastfs->unmount();
+    FastFS::fs_context.fastfs->unmount();
     spdk_app_stop(-1);
   }
   ctx.inflights--;
@@ -302,19 +297,18 @@ static void create_file(FastFS* fastfs) {
   createCtx->mode = 493;
   createCtx->type = FASTFS_REGULAR_FILE;
   opCtx->callback = create_file_complete;
-  opCtx->cb_args = opCtx;
+  opCtx->cb_args = createCtx;
   fastfs->create(*opCtx);
   ctx.subfile_index++;
 }
 
 static void create_subdir_complete(void* cb_args, int code) {
-  fs_op_context* opCtx = reinterpret_cast<fs_op_context*>(cb_args);
-  FastFS* fastfs = opCtx->fastfs;
-  fastfs->freeFsOp(opCtx);
+  CreateContext* createCtx = reinterpret_cast<CreateContext*>(cb_args);
+  FastFS::fs_context.fastfs->freeFsOp(createCtx);
   if (code != 0) {
     SPDK_ERRLOG("create sub dir failed: %d\n", code);
     spdk_poller_unregister(&ctx.poller);
-    fastfs->unmount();
+    FastFS::fs_context.fastfs->unmount();
     spdk_app_stop(-1);
   }
   ctx.inflights--;
@@ -331,7 +325,7 @@ static void create_subdir(FastFS* fastfs) {
   createCtx->mode = 493;
   createCtx->type = FASTFS_DIR;
   opCtx->callback = create_subdir_complete;
-  opCtx->cb_args = opCtx;
+  opCtx->cb_args = createCtx;
   fastfs->create(*opCtx);
   ctx.subdir_index++;
 }
@@ -423,7 +417,7 @@ static int do_bench(void *arg) {
       delCtx->name = ctx.path.c_str();
       delCtx->recursive = true;
       opCtx->callback = delete_complete;
-      opCtx->cb_args = opCtx;
+      opCtx->cb_args = delCtx;
       fastfs->remove(*opCtx);
       ctx.stage++;
       return SPDK_POLLER_BUSY;
@@ -433,9 +427,9 @@ static int do_bench(void *arg) {
 }
 
 static void create_dir_complete(void* cb_args, int code) {
-  fs_op_context* opCtx = reinterpret_cast<fs_op_context*>(cb_args);
-  FastFS* fastfs = opCtx->fastfs;
-  fastfs->freeFsOp(opCtx);
+  CreateContext* createCtx = reinterpret_cast<CreateContext*>(cb_args);
+  FastFS* fastfs = FastFS::fs_context.fastfs;
+  fastfs->freeFsOp(createCtx);
   if (code != 0) {
     SPDK_ERRLOG("create test dir failed: %d\n", code);
     fastfs->unmount();
@@ -465,7 +459,7 @@ static void mount_complete(FastFS* fastfs, int code) {
   createCtx->mode = 493;
   createCtx->type = FASTFS_DIR;
   opCtx->callback = create_dir_complete;
-  opCtx->cb_args = opCtx;
+  opCtx->cb_args = createCtx;
   SPDK_NOTICELOG("mount fastfs successfuly, create test dir now.\n");
   fastfs->create(*opCtx);
 }

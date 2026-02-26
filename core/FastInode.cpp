@@ -264,7 +264,7 @@ static void createPath(void* cb_args, int code) {
   CreateContext* createCtx = reinterpret_cast<CreateContext*>(ctx->private_data);
   if (code != 0) {
     createCtx->callback(createCtx->args, code);
-    ctx->fastfs->freeFsOp(ctx);
+    ctx->fastfs->freeFsOp(createCtx);
     return;
   }
   if (createCtx->ino != UINT32_MAX) { // new created
@@ -297,7 +297,7 @@ static void createPath(void* cb_args, int code) {
     }
   }
   createCtx->callback(createCtx->args, 0);
-  ctx->fastfs->freeFsOp(ctx);
+  ctx->fastfs->freeFsOp(createCtx);
 }
 
 void FastFS::createRecursive(const std::string& path, op_cb callback, void* args) {

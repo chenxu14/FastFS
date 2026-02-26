@@ -42,6 +42,14 @@ ByteBuffer* FastFile::getTailBlock() {
   return tail_block;
 }
 
+static void fsyncDone(void* cb_args, int code) {
+  fs_op_context* ctx = reinterpret_cast<fs_op_context*>(cb_args);
+  FSyncContext* fsyncCtx = reinterpret_cast<FSyncContext*>(ctx->private_data);
+  fs_op_context* writeCtx = ctx->next;
+  FastFS::fs_context.fastfs->freeFsOp(fsyncCtx);
+  writeCtx->callback(writeCtx->cb_args, code);
+}
+
 void FastFS::writeComplete(fs_op_context* ctx) {
   WriteContext* writeCtx = reinterpret_cast<WriteContext*>(ctx->private_data);
   FastFile* file = writeCtx->file;
@@ -103,12 +111,14 @@ void FastFS::writeComplete(fs_op_context* ctx) {
       }
     }
     // judge whether fsync needs to be called
-    if (file->flags_ & O_SYNC) {
-      writeCtx->writeExtents.clear();
-      int fd = writeCtx->fd;
-      FSyncContext* fsyncCtx = new (ctx->private_data) FSyncContext();
-      fsyncCtx->fd = fd;
-      return fsync(*ctx);
+    if ((file->flags_ & O_SYNC) || dirtyExtents->size() > 100) {
+      fs_op_context* opCtx = allocFsOp();
+      opCtx->next = ctx;
+      FSyncContext* fsyncCtx = new (opCtx->private_data) FSyncContext();
+      fsyncCtx->fd = writeCtx->fd;
+      opCtx->callback = fsyncDone;
+      opCtx->cb_args = opCtx;
+      return fsync(*opCtx);
     }
   } else {
     // free allocated extents

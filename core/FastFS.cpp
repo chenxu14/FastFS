@@ -143,7 +143,7 @@ void FastFS::mount(fs_cb callback, uint32_t maxInodes, uint32_t maxFiles) {
   fs_context.fdAllocator->reserve(1); // stdout
   fs_context.fdAllocator->reserve(2); // stderr
   files = new FileCache(
-      fs_context.maxFiles, MemAllocator<FastFile>(fs_context.localNuma, 64));
+      fs_context.maxFiles, MemAllocator<FastFile>(fs_context.localNuma, 32));
   fs_context.inodeAllocator = new BitsAllocator(fs_context.maxInodes);
   fs_context.inodeAllocator->reserve(0); // root
   slots = new HashSlots(
@@ -218,7 +218,7 @@ void FastFS::initObjPool(int poolSize) {
       MemAllocator<fs_op_context>(fs_context.localNuma, 64));
   buffers = new std::vector<ByteBuffer, MemAllocator<ByteBuffer>>(
       MemAllocator<ByteBuffer>(fs_context.localNuma, 64));
-  fs_ops->reserve(poolSize);
+  fs_ops->resize(poolSize);
   buffers->reserve(poolSize);
   for (int i = 0; i < poolSize; i++) {
     char* buffer = (char*) spdk_dma_zmalloc_socket(
@@ -245,9 +245,14 @@ fs_op_context* FastFS::allocFsOp() {
   return res;
 }
 
-void FastFS::freeFsOp(fs_op_context* fs_op) {
-  fs_op->next = op_head;
-  op_head = fs_op;
+template<typename T>
+void FastFS::freeFsOp(T* fsOp) {
+  fsOp->~T();
+  // Force conversion is allowed, since private_data
+  // is the first member of the fs_op_context
+  fs_op_context* opCtx = reinterpret_cast<fs_op_context*>(fsOp);
+  opCtx->next = op_head;
+  op_head = opCtx;
 }
 
 // TODO chenxu14 consider NULL
@@ -296,3 +301,11 @@ void FastFS::freeBuffer(ByteBuffer* buffer) {
   buffer->next = buf_head;
   buf_head = buffer;
 }
+
+template void FastFS::freeFsOp<ReadContext>(ReadContext*);
+template void FastFS::freeFsOp<WriteContext>(WriteContext*);
+template void FastFS::freeFsOp<FSyncContext>(FSyncContext*);
+template void FastFS::freeFsOp<CreateContext>(CreateContext*);
+template void FastFS::freeFsOp<DeleteContext>(DeleteContext*);
+template void FastFS::freeFsOp<RenameContext>(RenameContext*);
+template void FastFS::freeFsOp<TruncateContext>(TruncateContext*);

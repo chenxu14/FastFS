@@ -54,8 +54,8 @@ void spdk_free(void *buf) {
 void* spdk_realloc(void *buf, size_t size, size_t) {
   return realloc(buf, size);
 }
-void* spdk_dma_zmalloc_socket(size_t size, size_t, uint64_t*, int) {
-  return malloc(size);
+void* spdk_dma_zmalloc_socket(size_t size, size_t align, uint64_t*, int) {
+  return aligned_alloc(align, size);
 }
 void spdk_dma_free(void *buf) {
   free(buf);
@@ -258,7 +258,7 @@ static bool mockCreate(FastFS& fs, const std::string& name,
   if (createCtx->ino == UINT32_MAX) {
     res = false;
   }
-  fs.freeFsOp(ctx);
+  fs.freeFsOp(createCtx);
   return res;
 }
 
@@ -431,8 +431,7 @@ static void test_inode_overflow(void) {
 }
 
 static void write_complete(void* cb_args, int code) {
-  fs_op_context* opCtx = reinterpret_cast<fs_op_context*>(cb_args);
-  WriteContext* ctx = reinterpret_cast<WriteContext*>(opCtx->private_data);
+  WriteContext* ctx = reinterpret_cast<WriteContext*>(cb_args);
   if (code == 0) {
     CU_ASSERT(ctx->file->inode_->size_ == ctx->offset + ctx->count);
     auto* extents = ctx->file->inode_->extents_;
@@ -461,8 +460,7 @@ static void write_complete(void* cb_args, int code) {
 }
 
 static void read_complete(void* cb_args, int) {
-  fs_op_context* opCtx = reinterpret_cast<fs_op_context*>(cb_args);
-  ReadContext* ctx = reinterpret_cast<ReadContext*>(opCtx->private_data);
+  ReadContext* ctx = reinterpret_cast<ReadContext*>(cb_args);
   CU_ASSERT(ctx->file!= nullptr);
 }
 
@@ -471,6 +469,9 @@ static int createTestFile(FastFS& fs, const std::string& name, int size) {
   // mock file
   FastInode* inode = fs.lookup(0, name);
   CU_ASSERT_FATAL(inode != nullptr);
+  uintptr_t addr = reinterpret_cast<uintptr_t>(inode);
+  CU_ASSERT((addr & 63) == 0); // FastInode align 64 bytes
+
   inode->size_ = size;
   int len = 0;
   while (len < size) {
@@ -482,12 +483,15 @@ static int createTestFile(FastFS& fs, const std::string& name, int size) {
   std::string path = "/" + name;
   int fd = fs.open(path, F_MULTI_WRITE);
   CU_ASSERT(fd > 0);
+  FastFile& file = (*fs.files)[fd];
+  addr = reinterpret_cast<uintptr_t>(&file);
+  CU_ASSERT((addr & 31) == 0); // FastFile align 32 bytes
   return fd;
 }
 
 static void truncate_complete(void* cb_args, int code) {
-  fs_op_context* opCtx = reinterpret_cast<fs_op_context*>(cb_args);
-  opCtx->fastfs->freeFsOp(opCtx);
+  TruncateContext* truncateCtx = reinterpret_cast<TruncateContext*>(cb_args);
+  FastFS::fs_context.fastfs->freeFsOp(truncateCtx);
   CU_ASSERT(code == 0);
 }
 
@@ -503,7 +507,7 @@ static void test_truncate(void) {
   truncateCtx->ino = ino;
   truncateCtx->size = BLOCK_SIZE * 4; // 2 extents
   ctx->callback = truncate_complete;
-  ctx->cb_args = ctx;
+  ctx->cb_args = truncateCtx;
   fs.truncate(*ctx);
   fs.journal->pollEditOp();
   FastInode* inode = fs.status(fileName);
@@ -520,7 +524,7 @@ static void test_truncate(void) {
   truncateCtx->ino = ino;
   truncateCtx->size = BLOCK_SIZE * 4 + 1024; // 3 extents
   ctx->callback = truncate_complete;
-  ctx->cb_args = ctx;
+  ctx->cb_args = truncateCtx;
   fs.truncate(*ctx);
   fs.journal->pollEditOp();
   inode = fs.status(fileName);
@@ -536,7 +540,7 @@ static void test_truncate(void) {
   truncateCtx->ino = ino;
   truncateCtx->size = 0;
   ctx->callback = truncate_complete;
-  ctx->cb_args = ctx;
+  ctx->cb_args = truncateCtx;
   fs.truncate(*ctx);
   fs.journal->pollEditOp();
   inode = fs.status(fileName);
@@ -553,9 +557,9 @@ static void writeFile(FastFS& fs, int fd, read_write_task& t) {
   writeCtx->write_buff = t.data;
   writeCtx->count = t.count;
   ctx->callback = write_complete;
-  ctx->cb_args = ctx;
+  ctx->cb_args = writeCtx;
   fs.write(*ctx);
-  fs.freeFsOp(ctx);
+  fs.freeFsOp(writeCtx);
 }
 
 static void writeDirect(FastFS& fs, int fd, read_write_task& t) {
@@ -563,9 +567,9 @@ static void writeDirect(FastFS& fs, int fd, read_write_task& t) {
   WriteContext* writeCtx = new (ctx->private_data) WriteContext();
   writeCtx->dirctWrite(&fs, fd, t.offset, t.count, t.data);
   ctx->callback = write_complete;
-  ctx->cb_args = ctx;
+  ctx->cb_args = writeCtx;
   fs.write(*ctx);
-  fs.freeFsOp(ctx);
+  fs.freeFsOp(writeCtx);
   fs.freeBuffer(writeCtx->direct_buff);
 }
 
@@ -578,7 +582,7 @@ static void readFile(FastFS& fs, int fd, read_write_task& t) {
   readCtx->count = t.count;
   readCtx->read_buff = t.data;
   ctx->callback = read_complete;
-  ctx->cb_args = ctx;
+  ctx->cb_args = readCtx;
   FILE_READ = true;
   fs.read(*ctx);
   bool correct = true;
@@ -589,7 +593,7 @@ static void readFile(FastFS& fs, int fd, read_write_task& t) {
     }
   }
   CU_ASSERT(correct);
-  fs.freeFsOp(ctx);
+  fs.freeFsOp(readCtx);
   FILE_READ = false;
 }
 
@@ -598,7 +602,7 @@ static void readDirect(FastFS& fs, int fd, read_write_task& t) {
   ReadContext* readCtx = new (ctx->private_data) ReadContext();
   readCtx->dirctRead(&fs, fd, t.offset, t.count);
   ctx->callback = read_complete;
-  ctx->cb_args = ctx;
+  ctx->cb_args = readCtx;
   FILE_READ = true;
   fs.read(*ctx);
   bool correct = true;
@@ -613,7 +617,7 @@ static void readDirect(FastFS& fs, int fd, read_write_task& t) {
     count++;
   }
   CU_ASSERT(correct);
-  fs.freeFsOp(ctx);
+  fs.freeFsOp(readCtx);
   fs.freeBuffer(readCtx->direct_buff);
   FILE_READ = false;
 }
@@ -770,6 +774,9 @@ static void test_write_error(void) {
 static void test_fs_op_pool(void) {
   FastFS fs("Malloc0");
   do_mount(fs, BLOCK_SIZE * 2);
+  CU_ASSERT(sizeof(FastInode) == 128);
+  CU_ASSERT(sizeof(fs_op_context) == 128);
+  CU_ASSERT(sizeof(FastFile) == 32);
   fs_op_context* opCtx = nullptr;
   ByteBuffer* buffer = nullptr;
   for (int i = 0; i < DEFAULT_POOL_SIZE; i++) {
@@ -787,7 +794,13 @@ static void test_fs_op_pool(void) {
   CU_ASSERT(!opCtx2);
   CU_ASSERT(!buffer2);
 
-  fs.freeFsOp(opCtx);
+  CreateContext* createCtx = new (opCtx->private_data) CreateContext();
+  uintptr_t fsOpAddr = reinterpret_cast<uintptr_t>(createCtx);
+  uintptr_t opCtxAddr = reinterpret_cast<uintptr_t>(opCtx);
+  CU_ASSERT(fsOpAddr == opCtxAddr);
+  CU_ASSERT((fsOpAddr & 63) == 0);
+
+  fs.freeFsOp(createCtx);
   fs.freeBuffer(buffer);
   opCtx2 = fs.allocFsOp();
   buffer2 = fs.allocBuffer();
@@ -796,8 +809,7 @@ static void test_fs_op_pool(void) {
 }
 
 static void random_write_complete(void* cb_args, int code) {
-  fs_op_context* opCtx = reinterpret_cast<fs_op_context*>(cb_args);
-  WriteContext* ctx = reinterpret_cast<WriteContext*>(opCtx->private_data);
+  WriteContext* ctx = reinterpret_cast<WriteContext*>(cb_args);
   CU_ASSERT(code == 0);
   CU_ASSERT(ctx->file->inode_->size_ > ctx->offset + ctx->count);
   auto* extents = ctx->file->inode_->extents_;
@@ -813,8 +825,7 @@ static void random_write_complete(void* cb_args, int code) {
 
 static void fsync_complete(void* cb_args, int code) {
   CU_ASSERT(code == 0);
-  fs_op_context* opCtx = reinterpret_cast<fs_op_context*>(cb_args);
-  FSyncContext* ctx = reinterpret_cast<FSyncContext*>(opCtx->private_data);
+  FSyncContext* ctx = reinterpret_cast<FSyncContext*>(cb_args);
   ExtentMap* dirtyExtents = ctx->file->inode_->dirtyExtents;
   CU_ASSERT(dirtyExtents != nullptr && dirtyExtents->size() == 0);
 }
@@ -829,24 +840,24 @@ static void test_random_write(void) {
   WriteContext* writeCtx = new (ctx->private_data) WriteContext();
   writeCtx->dirctWrite(&fs, fd, largeTask.offset, largeTask.count, largeTask.data);
   ctx->callback = random_write_complete;
-  ctx->cb_args = ctx;
+  ctx->cb_args = writeCtx;
   RANDOM_WRITE = true;
   fs.write(*ctx);
   RANDOM_WRITE = false;
   fs.freeBuffer(writeCtx->direct_buff);
 
+  writeCtx->~WriteContext();
   FSyncContext* fsyncCtx = new (ctx->private_data) FSyncContext();
   fsyncCtx->fd = fd;
   ctx->callback = fsync_complete;
   fs.fsync(*ctx);
-  fs.freeFsOp(ctx);
+  fs.freeFsOp(fsyncCtx);
   fs.close(fd);
 }
 
 static void sparse_write_complete(void* cb_args, int code) {
   CU_ASSERT(code == 0);
-  fs_op_context* opCtx = reinterpret_cast<fs_op_context*>(cb_args);
-  WriteContext* ctx = reinterpret_cast<WriteContext*>(opCtx->private_data);
+  WriteContext* ctx = reinterpret_cast<WriteContext*>(cb_args);
   CU_ASSERT(ctx->file->inode_->size_ == ctx->offset + ctx->count);
   auto* extents = ctx->file->inode_->extents_;
   CU_ASSERT(extents->size() == 2);
@@ -875,12 +886,12 @@ static void test_sparse_read_write(void) {
   writeCtx->write_buff = writeCtx->direct_buff->p_buffer_;
 
   ctx->callback = sparse_write_complete;
-  ctx->cb_args = ctx;
+  ctx->cb_args = writeCtx;
   RANDOM_WRITE = true;
   fs.write(*ctx);
   RANDOM_WRITE = false;
   fs.freeBuffer(writeCtx->direct_buff);
-  fs.freeFsOp(ctx);
+  fs.freeFsOp(writeCtx);
   fs.close(fd);
 }
 

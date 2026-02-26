@@ -104,7 +104,7 @@ class INodeFile {
   }
 };
 
-class CreateContext {
+class alignas(32) CreateContext {
  public:
   uint32_t parentId;
   std::string_view name;
@@ -143,7 +143,7 @@ class CreateContext {
   }
 };
 
-class DeleteContext {
+class alignas(32) DeleteContext {
  public:
   uint32_t parentId;
   std::string name;
@@ -170,7 +170,7 @@ class DeleteContext {
   }
 };
 
-class TruncateContext {
+class alignas(32) TruncateContext {
  public:
   uint32_t ino;
   uint64_t size;
@@ -186,7 +186,7 @@ class TruncateContext {
   }
 };
 
-class RenameContext {
+class alignas(32) RenameContext {
  public:
   uint32_t olddir;
   uint32_t newdir;

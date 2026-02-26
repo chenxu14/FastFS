@@ -52,12 +52,12 @@ struct fs_context_t {
   fs_cb callback;
 };
 
-struct fs_op_context {
-  fs_op_context* next;
+struct alignas(64) fs_op_context {
+  char private_data[96]; // align 128 bytes
   op_cb callback;
   void* cb_args;
   FastFS* fastfs;
-  char private_data[96]; // align 128 bytes
+  fs_op_context* next;
 };
 
 class WriteExtent {
@@ -73,7 +73,7 @@ class WriteExtent {
   fs_op_context* op_ctx;
 };
 
-class WriteContext {
+class alignas(32) WriteContext {
  public :
   uint32_t fd;
   uint32_t count;
@@ -100,7 +100,7 @@ class WriteContext {
   }
 };
 
-class FSyncContext {
+class alignas(32) FSyncContext {
  public :
   uint32_t fd;
   FastFile* file;
@@ -109,7 +109,7 @@ class FSyncContext {
   void serialize(ByteBuffer* buf);
 };
 
-class ReadContext {
+class alignas(32) ReadContext {
  public :
   uint32_t fd;
   uint32_t count;
@@ -134,7 +134,7 @@ class ReadContext {
   }
 };
 
-class FastFile {
+class alignas(32) FastFile {
  public:
   uint32_t flags_;
   uint64_t pos_;
@@ -214,9 +214,10 @@ class FastFS {
   void read(fs_op_context& ctx);
 
   void initObjPool(int poolSize);
-
   fs_op_context* allocFsOp();
-  void freeFsOp(fs_op_context* fs_op);
+
+  template<typename T>
+  void freeFsOp(T* fsOp);
 
   ByteBuffer* allocBuffer();
   ByteBuffer* allocReadBuffer(uint64_t offset, uint32_t len);
@@ -230,7 +231,7 @@ class FastFS {
   inline uint32_t hashSlot(uint32_t parentId, std::string_view name) const;
 };
 
-class FastInode {
+class alignas(64) FastInode {
  public:
   uint32_t parentId_;
   uint32_t next_;

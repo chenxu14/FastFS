@@ -49,10 +49,7 @@ static void freeFuseOp(FuseOp* fuseOp) {
     fuseCtx->fastfs->freeBuffer(fuseOp->buffer);
     fuseOp->buffer = nullptr;
   }
-  if (fuseOp->opCtx) {
-    fuseCtx->fastfs->freeFsOp(fuseOp->opCtx);
-    fuseOp->opCtx = nullptr;
-  }
+  fuseOp->opCtx = nullptr;
   fuseOp->req = nullptr;
   fuseOp->file = nullptr;
   fuseOp->ino = 0;
@@ -73,7 +70,7 @@ static void fastfs_init(void*, struct fuse_conn_info* conn) {
   conn->want |= FUSE_CAP_ASYNC_DIO;
 
   // init object pool
-  fuseOps.reserve(DEFAULT_POOL_SIZE);
+  fuseOps.resize(DEFAULT_POOL_SIZE);
   for (int i = 0; i < DEFAULT_POOL_SIZE - 1; i++) {
     fuseOps[i].buffer = nullptr;
     fuseOps[i].opCtx = nullptr;
@@ -153,6 +150,7 @@ static void create_dir_complete(void* cb_args, int code) {
   } else {
     fuse_reply_err(fuseOp->req, EEXIST);
   }
+  fuseCtx->fastfs->freeFsOp(createCtx);
   freeFuseOp(fuseOp);
   inflights--;
 }
@@ -196,6 +194,7 @@ static void create_file_complete(void* cb_args, int code) {
   } else {
     fuse_reply_err(fuseOp->req, EEXIST);
   }
+  fuseCtx->fastfs->freeFsOp(createCtx);
   freeFuseOp(fuseOp);
   inflights--;
 }
@@ -219,7 +218,10 @@ static void fastfs_create(fuse_req_t req, fuse_ino_t pid,
 
 static void delete_complete(void* cb_args, int code) {
   FuseOp* fuseOp = reinterpret_cast<FuseOp*>(cb_args);
+  DeleteContext* delCtx =
+      reinterpret_cast<DeleteContext*>(fuseOp->opCtx->private_data);
   fuse_reply_err(fuseOp->req, code == 0 ? code : ENOENT);
+  fuseCtx->fastfs->freeFsOp(delCtx);
   freeFuseOp(fuseOp);
   inflights--;
 }
@@ -244,7 +246,10 @@ static void fastfs_rmdir(fuse_req_t req, fuse_ino_t pid, const char *name) {
 
 static void rename_complete(void* cb_args, int code) {
   FuseOp* fuseOp = reinterpret_cast<FuseOp*>(cb_args);
+  RenameContext* renameCtx =
+      reinterpret_cast<RenameContext*>(fuseOp->opCtx->private_data);
   fuse_reply_err(fuseOp->req, code == 0 ? code : ENOENT);
+  fuseCtx->fastfs->freeFsOp(renameCtx);
   freeFuseOp(fuseOp);
   inflights--;
 }
@@ -282,11 +287,14 @@ static void fastfs_flush(
 
 static void fsync_complete(void* cb_args, int code) {
   FuseOp* fuseOp = reinterpret_cast<FuseOp*>(cb_args);
+  FSyncContext* fsyncCtx =
+      reinterpret_cast<FSyncContext*>(fuseOp->opCtx->private_data);
   if (code != 0) {
     fuse_reply_err(fuseOp->req, ENOENT);
   } else {
     fuse_reply_err(fuseOp->req, 0);
   }
+  fuseCtx->fastfs->freeFsOp(fsyncCtx);
   freeFuseOp(fuseOp);
   inflights--;
 }
@@ -306,6 +314,8 @@ static void fastfs_fsync(
 
 static void truncate_complete(void* cb_args, int code) {
   FuseOp* fuseOp = reinterpret_cast<FuseOp*>(cb_args);
+  TruncateContext* truncateCtx =
+      reinterpret_cast<TruncateContext*>(fuseOp->opCtx->private_data);
   if (code != 0) {
     fuse_reply_err(fuseOp->req, ENOENT);
   } else {
@@ -320,6 +330,7 @@ static void truncate_complete(void* cb_args, int code) {
       fuse_reply_open(fuseOp->req, fuseOp->file);
     }
   }
+  fuseCtx->fastfs->freeFsOp(truncateCtx);
   freeFuseOp(fuseOp);
   inflights--;
 }
@@ -417,14 +428,11 @@ static void read_complete(void* cb_args, int code) {
   } else if (code != 0) {
     fuse_reply_err(fuseOp->req, EIO);
   } else {
-    struct fuse_bufvec bufvec;
-    bufvec.count = 1;
-    bufvec.idx = 0;
-    bufvec.off = 0;
+    struct fuse_bufvec bufvec = FUSE_BUFVEC_INIT(readCtx->count);
     bufvec.buf[0].mem = readCtx->direct_buff->p_buffer_ + readCtx->direct_cursor;
-    bufvec.buf[0].size = readCtx->count;
     fuse_reply_data(fuseOp->req, &bufvec, FUSE_BUF_NO_SPLICE);
   }
+  fuseCtx->fastfs->freeFsOp(readCtx);
   freeFuseOp(fuseOp);
   inflights--;
 }
@@ -433,8 +441,8 @@ static void fastfs_read(fuse_req_t req, fuse_ino_t, size_t size,
     off_t off, struct fuse_file_info* fi) {
   inflights++;
   FuseOp* fuseOp = allocFuseOp();
-  fuseOp->buffer = fuseCtx->fastfs->allocReadBuffer(off, size);
   fuseOp->req = req;
+  fuseOp->buffer = fuseCtx->fastfs->allocReadBuffer(off, size);
   fuseOp->opCtx = fuseCtx->fastfs->allocFsOp();
   ReadContext* readCtx = new (fuseOp->opCtx->private_data) ReadContext();
   readCtx->fd = fi->fh;
@@ -458,6 +466,7 @@ static void write_complete(void* cb_args, int code) {
   } else {
     fuse_reply_write(fuseOp->req, writeCtx->count);
   }
+  fuseCtx->fastfs->freeFsOp(writeCtx);
   freeFuseOp(fuseOp);
   inflights--;
 }
@@ -495,6 +504,10 @@ static void fastfs_setxattr(
 }
 
 static void fastfs_removexattr(fuse_req_t req, fuse_ino_t, const char*) {
+  fuse_reply_err(req, ENOTSUP);
+}
+
+static void fastfs_listxattr(fuse_req_t req, fuse_ino_t, size_t) {
   fuse_reply_err(req, ENOTSUP);
 }
 
@@ -555,6 +568,7 @@ static void init_fuse_ops(struct fuse_lowlevel_ops& ops) {
   ops.setxattr = fastfs_setxattr;
   ops.getxattr = fastfs_getxattr;
   ops.removexattr = fastfs_removexattr;
+  ops.listxattr = fastfs_listxattr;
   ops.statfs = fastfs_statfs;
   ops.ioctl = fastfs_ioctl;
 }

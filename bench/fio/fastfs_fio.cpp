@@ -109,25 +109,24 @@ static void write_file_complete(void* cb_args, int code) {
   } else {
     fastfs->close(writeCtx->fd);
     fastfs->freeBuffer(writeCtx->direct_buff);
-    fastfs->freeFsOp(opCtx);
+    fastfs->freeFsOp(writeCtx);
     fastfs->ready = true;
   }
 }
 
-static void create_file_complete(void* cb_args, int code) {
-  struct fastfs_fio_thread* fio_thread =
-      reinterpret_cast<struct fastfs_fio_thread*>(
-          spdk_thread_get_ctx(spdk_get_thread()));
-  fs_op_context* opCtx = reinterpret_cast<fs_op_context*>(cb_args);
-  FastFS* fastfs = opCtx->fastfs;
-  fastfs->freeFsOp(opCtx);
+static void create_complete(int code) {
   if (code != 0) {
     printf("create test file failed : %d\n", code);
     exit(code);
   }
+
+  FastFS* fastfs = FastFS::fs_context.fastfs;
+  struct fastfs_fio_thread* fio_thread =
+      reinterpret_cast<struct fastfs_fio_thread*>(
+          spdk_thread_get_ctx(spdk_get_thread()));
   if (fio_thread->td->o.td_ddir & TD_DDIR_READ) {
     // mock file's data
-    opCtx = fastfs->allocFsOp();
+    fs_op_context* opCtx = fastfs->allocFsOp();
     WriteContext* writeCtx = new (opCtx->private_data) WriteContext();
     writeCtx->fd = fio_thread->fastfs->open(g_test_file, F_MULTI_WRITE);
     writeCtx->count = FastFS::fs_context.extentSize;
@@ -142,6 +141,18 @@ static void create_file_complete(void* cb_args, int code) {
   } else {
     fastfs->ready = true;
   }
+}
+
+static void create_file_complete(void* cb_args, int code) {
+  CreateContext* createCtx = reinterpret_cast<CreateContext*>(cb_args);
+  FastFS::fs_context.fastfs->freeFsOp(createCtx);
+  return create_complete(code);
+}
+
+static void truncate_file_complete(void* cb_args, int code) {
+  TruncateContext* truncCtx = reinterpret_cast<TruncateContext*>(cb_args);
+  FastFS::fs_context.fastfs->freeFsOp(truncCtx);
+  return create_complete(code);
 }
 
 static void mount_complete(FastFS* fastfs, int code) {
@@ -162,15 +173,15 @@ static void mount_complete(FastFS* fastfs, int code) {
     createCtx->mode = 493;
     createCtx->type = FASTFS_REGULAR_FILE;
     opCtx->callback = create_file_complete;
-    opCtx->cb_args = opCtx;
+    opCtx->cb_args = createCtx;
     fastfs->create(*opCtx);
   } else { // file already exist
     if (fio_thread->td->o.td_ddir & TD_DDIR_WRITE) {
       TruncateContext* truncateCtx = new (opCtx->private_data) TruncateContext();
       truncateCtx->ino = inode->ino_;
       truncateCtx->size = 0;
-      opCtx->callback = create_file_complete;
-      opCtx->cb_args = opCtx;
+      opCtx->callback = truncate_file_complete;
+      opCtx->cb_args = truncateCtx;
       fastfs->truncate(*opCtx);
     } else {
       fastfs->ready = true;
@@ -358,7 +369,7 @@ static int fastfs_close(struct thread_data *td, struct fio_file *f) {
   while (!rc) {
     spdk_thread_poll(fio_thread->thread, 0, 0);
   }
-  opCtx->fastfs->freeFsOp(opCtx);
+  opCtx->fastfs->freeFsOp(fsyncCtx);
 
   rc = fio_thread->fastfs->close(f->fd);
   f->fd = -1;
@@ -473,7 +484,15 @@ static void fastfs_io_u_free(struct thread_data *td, struct io_u *io_u) {
       reinterpret_cast<struct fastfs_fio_thread*>(td->io_ops_data);
   fs_op_context* opCtx = reinterpret_cast<fs_op_context*>(io_u->engine_data);
   if (opCtx) {
-    fio_thread->fastfs->freeFsOp(opCtx);
+    if (io_u->ddir == DDIR_WRITE) {
+      WriteContext* writeCtx =
+          reinterpret_cast<WriteContext*>(opCtx->private_data);
+      fio_thread->fastfs->freeFsOp(writeCtx);
+    } else {
+      ReadContext* readCtx =
+          reinterpret_cast<ReadContext*>(opCtx->private_data);
+      fio_thread->fastfs->freeFsOp(readCtx);
+    }
     io_u->engine_data = NULL;
   }
 }
